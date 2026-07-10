@@ -1,0 +1,22 @@
+<!DOCTYPE html><html><body><pre id="out"></pre>
+<script type="module">
+import { save, load, wipeAll, slotInfo, latestSlot, exportSave, importSave } from '../js/save.js';
+const out = [];
+const state1 = { character: { opId: 'zen', name: 'ZEN' } };
+const state2 = { character: { opId: 'hemlock', name: 'HEMLOCK' } };
+wipeAll();
+out.push('empty slots: ' + JSON.stringify(slotInfo().map(s => !!s.empty)));
+save(state1, 1); save(state2, 3);
+out.push('after saves: ' + slotInfo().map(s => s.empty ? '-' : s.name).join(','));
+out.push('latest: ' + latestSlot());
+out.push('load3: ' + load(3).character.name);
+const exported = exportSave(state1);
+out.push('roundtrip: ' + importSave(exported).character.name);
+out.push('bad import: ' + importSave('{"junk":1}'));
+// legacy migration
+wipeAll();
+localStorage.setItem('liquidchrome_save_v1', JSON.stringify({ v: 1, at: 5, state: state2 }));
+out.push('legacy->slot1: ' + load(1).character.name);
+wipeAll();
+document.getElementById('out').textContent = out.join('\n');
+</script></body></html>

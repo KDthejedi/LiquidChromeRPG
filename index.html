@@ -81,11 +81,13 @@
           <h2>SYS</h2>
           <button class="close-btn" data-close="menu-panel">×</button>
         </div>
+        <div id="slot-list"></div>
         <div class="menu-actions">
-          <button id="btn-save">SAVE</button>
-          <button id="btn-load">LOAD</button>
-          <button id="btn-wipe" class="danger">WIPE &amp; NEW</button>
+          <button id="btn-export">EXPORT SAVE</button>
+          <button id="btn-import">IMPORT SAVE</button>
+          <button id="btn-wipe" class="danger">WIPE ALL &amp; NEW</button>
         </div>
+        <input id="import-file" type="file" accept=".json,application/json" hidden>
         <p id="menu-status" class="menu-status"></p>
       </aside>
     </section>

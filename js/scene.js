@@ -106,6 +106,9 @@ export class SafehouseScene {
     }));
     this.puffs = [];        // footstep dust
     this.lastLegSign = 1;
+    // accessibility floor: honor prefers-reduced-motion by stilling the
+    // decorative loops (rain, drone, haze, motes, steam, grain jitter)
+    this.still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
     // film grain: a small noise tile, pattern-tiled with a frame jitter
     const noise = document.createElement('canvas');
@@ -449,7 +452,7 @@ export class SafehouseScene {
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
     }
     // a freighter drone crossing the skyline, running light blinking
-    const acX = 4.3 + ((s / 14) % 1) * 3.4;
+    const acX = this.still ? 5.4 : 4.3 + ((s / 14) % 1) * 3.4;
     const acF = 0.72 - ((s / 14) % 1) * 0.06;
     const ac = this.wallN(acX, acF);
     ctx.fillStyle = PALETTE.dim;
@@ -465,7 +468,7 @@ export class SafehouseScene {
     ctx.strokeStyle = PALETTE.teal;
     ctx.lineWidth = 1;
     for (const d of this.rain) {
-      const fall = (s * d.speed + d.phase) % 1;
+      const fall = this.still ? d.phase : (s * d.speed + d.phase) % 1;
       const top = 0.88 - fall * 0.66;
       const a = this.wallN(d.wx, top);
       const b = this.wallN(d.wx + 0.06, Math.max(0.22, top - d.len));
@@ -797,7 +800,7 @@ export class SafehouseScene {
     ctx.save();
     ctx.fillStyle = PALETTE.amber;
     for (const m of this.motes) {
-      const a = s * m.rate * Math.PI * 2 + m.seed;
+      const a = (this.still ? 0 : s * m.rate * Math.PI * 2) + m.seed;
       const x = lampTop.x + Math.cos(a) * this.tileW * m.rx * 0.5;
       const y = lampTop.y - h * (0.45 + 0.35 * Math.sin(a * 0.7 + m.seed));
       ctx.globalAlpha = 0.18 + 0.14 * Math.sin(a * 1.3);
@@ -956,7 +959,7 @@ export class SafehouseScene {
     // steam, when you look closely
     ctx.strokeStyle = PALETTE.dim;
     for (let i = 0; i < 3; i++) {
-      const ph = ((t / 2600) + i * 0.33) % 1;
+      const ph = this.still ? i * 0.33 : ((t / 2600) + i * 0.33) % 1;
       const sy = kb.y - kh - 8 - ph * 16;
       const sway = Math.sin(ph * Math.PI * 3 + i) * 2.5;
       ctx.globalAlpha = 0.28 * (1 - ph);
@@ -1317,7 +1320,7 @@ export class SafehouseScene {
     const ctx = this.ctx;
     ctx.save();
     for (let i = 0; i < 3; i++) {
-      const drift = Math.sin(t / 9000 + i * 2.1) * this.tileW * 0.8;
+      const drift = this.still ? 0 : Math.sin(t / 9000 + i * 2.1) * this.tileW * 0.8;
       const c = this.iso(3.5 + i * 2.6, 2.5 + i * 1.8);
       const g = ctx.createRadialGradient(c.x + drift, c.y - 24, 4, c.x + drift, c.y - 24, this.tileW * 2.4);
       g.addColorStop(0, 'rgba(45, 212, 191, 0.016)');
@@ -1339,7 +1342,7 @@ export class SafehouseScene {
     for (let y = 0; y < this.viewH; y += 4) ctx.fillRect(0, y, this.viewW, 1);
     // film grain, jittered so it lives
     if (this.grain) {
-      const j = Math.floor(t / 80) % 4;
+      const j = this.still ? 0 : Math.floor(t / 80) % 4;
       ctx.globalAlpha = 1;
       ctx.save();
       ctx.translate(-j * 37, -j * 23);

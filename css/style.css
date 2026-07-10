@@ -204,6 +204,25 @@ html, body {
 .kit-list .kit-name { color: var(--violet); }
 .kit-list .kit-cost { color: var(--text-dim); }
 
+#slot-list { display: flex; flex-direction: column; gap: 0.45rem; margin-bottom: 0.9rem; }
+.slot-row {
+  display: flex; align-items: center; gap: 0.6rem;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.75rem;
+}
+.slot-row.active { border-color: var(--teal); box-shadow: inset 0 0 12px rgba(45, 212, 191, 0.06); }
+.slot-row .slot-label { flex: 1; color: var(--text); letter-spacing: 0.06em; }
+.slot-row .slot-label .slot-when { color: var(--text-dim); font-size: 0.68rem; display: block; }
+.slot-row .slot-label.empty { color: var(--text-dim); font-style: italic; }
+.slot-row button {
+  background: none; border: 1px solid var(--line); color: var(--teal);
+  font: inherit; font-size: 0.65rem; letter-spacing: 0.1em;
+  padding: 0.3rem 0.55rem; cursor: pointer;
+}
+.slot-row button:hover { border-color: var(--teal); }
+.slot-row button:disabled { opacity: 0.3; cursor: default; }
+
 .menu-actions { display: flex; flex-direction: column; gap: 0.6rem; }
 .menu-actions button {
   background: none;

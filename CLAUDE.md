@@ -3,7 +3,9 @@
 All canon (setting, characters, voice, systems, approved design decisions) lives
 in **WORLD.md**. Read it before writing any player-facing text or touching game
 data — the voice rules (§2), lexicon (§3), and locked palette (§10) are not
-negotiable.
+negotiable. **BUILD_HANDOFF.md** is the author's engineering spec (systems,
+combat, dialogue, technical guidance); where it conflicts with WORLD.md §12,
+WORLD.md wins — the deltas are noted at the top of the handoff.
 
 ## Stack
 

@@ -1,11 +1,14 @@
 import { OPERATIVES, SKILL_NAMES, newCharacter, deriveVitals } from './data.js';
-import { save, load, wipe } from './save.js';
+import {
+  save, load, wipeAll, slotInfo, latestSlot, exportSave, importSave,
+} from './save.js';
 import { SafehouseScene } from './scene.js';
 
 const $ = (id) => document.getElementById(id);
 
-let state = null;   // { character }
+let state = null;      // { character }
 let scene = null;
+let activeSlot = 1;
 
 // ---------- operative select ----------
 
@@ -25,7 +28,8 @@ function showSelect() {
       <p class="op-bio">${op.bio}</p>`;
     card.addEventListener('click', () => {
       state = { character: newCharacter(op.id) };
-      save(state);
+      activeSlot = slotInfo().find((s) => s.empty)?.slot ?? 1;
+      save(state, activeSlot);
       startGame();
     });
     row.appendChild(card);
@@ -112,30 +116,78 @@ function togglePanel(id) {
 }
 
 $('btn-sheet').addEventListener('click', () => togglePanel('sheet-panel'));
-$('btn-menu').addEventListener('click', () => togglePanel('menu-panel'));
+$('btn-menu').addEventListener('click', () => { renderSlots(); togglePanel('menu-panel'); });
 document.querySelectorAll('.close-btn').forEach((btn) =>
   btn.addEventListener('click', () => $(btn.dataset.close).classList.add('hidden')));
 
-$('btn-save').addEventListener('click', () => {
-  $('menu-status').textContent = save(state)
-    ? 'Saved. The wire remembers, even when you’d rather it didn’t.'
-    : 'Save failed — storage refused the write.';
+function renderSlots() {
+  const list = $('slot-list');
+  list.innerHTML = '';
+  for (const info of slotInfo()) {
+    const row = document.createElement('div');
+    row.className = `slot-row${info.slot === activeSlot ? ' active' : ''}`;
+    const when = info.at
+      ? new Date(info.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    row.innerHTML = info.empty
+      ? `<span class="slot-label empty">SLOT ${info.slot} — empty</span>`
+      : `<span class="slot-label">SLOT ${info.slot} — ${info.name}<span class="slot-when">${when}</span></span>`;
+    const btnSave = document.createElement('button');
+    btnSave.textContent = 'SAVE';
+    btnSave.addEventListener('click', () => {
+      activeSlot = info.slot;
+      $('menu-status').textContent = save(state, info.slot)
+        ? 'Saved. The wire remembers, even when you’d rather it didn’t.'
+        : 'Save failed — storage refused the write.';
+      renderSlots();
+    });
+    const btnLoad = document.createElement('button');
+    btnLoad.textContent = 'LOAD';
+    btnLoad.disabled = !!info.empty;
+    btnLoad.addEventListener('click', () => {
+      const loaded = load(info.slot);
+      if (!loaded) { $('menu-status').textContent = 'Nothing on file. A clean record, for once.'; return; }
+      state = loaded;
+      activeSlot = info.slot;
+      $('menu-status').textContent = 'Loaded.';
+      startGame();
+      renderSlots();
+    });
+    row.append(btnSave, btnLoad);
+    list.appendChild(row);
+  }
+}
+
+$('btn-export').addEventListener('click', () => {
+  const blob = new Blob([exportSave(state)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `liquidchrome-${state.character.opId}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  $('menu-status').textContent = 'Exported. Keep it somewhere the corps don’t look.';
 });
 
-$('btn-load').addEventListener('click', () => {
-  const loaded = load();
-  if (!loaded) {
-    $('menu-status').textContent = 'Nothing on file. A clean record, for once.';
+$('btn-import').addEventListener('click', () => $('import-file').click());
+$('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const imported = importSave(await file.text());
+  if (!imported) {
+    $('menu-status').textContent = 'That file’s no record of yours. Import refused.';
     return;
   }
-  state = loaded;
-  $('menu-status').textContent = 'Loaded.';
+  state = imported;
+  save(state, activeSlot);
+  $('menu-status').textContent = 'Imported. Welcome back.';
   startGame();
+  renderSlots();
 });
 
 $('btn-wipe').addEventListener('click', () => {
-  if (!confirm('Wipe the record and start over?')) return;
-  wipe();
+  if (!confirm('Wipe every slot and start over?')) return;
+  wipeAll();
   state = null;
   $('menu-panel').classList.add('hidden');
   showSelect();
@@ -143,9 +195,10 @@ $('btn-wipe').addEventListener('click', () => {
 
 // ---------- boot ----------
 
-const existing = load();
-if (existing) {
-  state = existing;
+const bootSlot = latestSlot();
+if (bootSlot) {
+  activeSlot = bootSlot;
+  state = load(bootSlot);
   startGame();
 } else {
   showSelect();
