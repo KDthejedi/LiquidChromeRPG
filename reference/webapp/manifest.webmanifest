@@ -1,0 +1,13 @@
+{
+  "name": "Liquid Chrome — Cyberpunk Chronicles I",
+  "short_name": "Liquid Chrome",
+  "description": "A burned console jacker runs the ice for a backer with no name — then takes revenge.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#04070d",
+  "theme_color": "#04070d",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

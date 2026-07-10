@@ -11,6 +11,7 @@ export const SKILL_NAMES = [
 export const OPERATIVES = {
   zen: {
     id: 'zen',
+    portrait: 'assets/portraits/zen.png',
     name: 'ZEN',
     role: 'Corporate ghost',
     accent: '#38bdf8',
@@ -32,6 +33,7 @@ export const OPERATIVES = {
   },
   socrates: {
     id: 'socrates',
+    portrait: 'assets/portraits/socrates.png',
     name: 'SOCRATES',
     role: 'Struck-off surgeon',
     accent: '#2dd4bf',
@@ -53,6 +55,7 @@ export const OPERATIVES = {
   },
   jackal: {
     id: 'jackal',
+    portrait: 'assets/portraits/jackal.png',
     name: 'JACKAL',
     role: 'Ex-corp military',
     accent: '#f43f5e',
@@ -74,6 +77,7 @@ export const OPERATIVES = {
   },
   hemlock: {
     id: 'hemlock',
+    portrait: 'assets/portraits/hemlock.png',
     name: 'HEMLOCK',
     role: 'Assassin · poisoner',
     accent: '#a78bfa',

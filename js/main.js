@@ -19,7 +19,7 @@ function showSelect() {
     card.className = 'op-card';
     card.style.setProperty('--accent', op.accent);
     card.innerHTML = `
-      <div class="op-ring">${op.name[0]}</div>
+      <div class="op-ring"><img src="${op.portrait}" alt="${op.name}"></div>
       <h2>${op.name}</h2>
       <div class="op-role">${op.role}</div>
       <p class="op-bio">${op.bio}</p>`;
@@ -49,6 +49,7 @@ function startGame() {
   scene = new SafehouseScene($('scene'), {
     accent: op.accent,
     initial: char.name[0],
+    portrait: op.portrait,
     onCaption: setCaption,
   });
   window.__scene = scene;

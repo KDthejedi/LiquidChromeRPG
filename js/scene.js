@@ -46,12 +46,19 @@ const ROOM = {
 };
 
 export class SafehouseScene {
-  constructor(canvas, { accent, initial, onCaption }) {
+  constructor(canvas, { accent, initial, portrait, onCaption }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.accent = accent;
     this.initial = initial;
     this.onCaption = onCaption;
+
+    this.portrait = null;
+    if (portrait) {
+      const img = new Image();
+      img.onload = () => { this.portrait = img; };
+      img.src = portrait;
+    }
 
     this.player = { x: 5, y: 5 };  // grid position, fractional while walking
     this.path = [];                // remaining cells to walk
@@ -357,7 +364,7 @@ export class SafehouseScene {
     ctx.ellipse(c.x, c.y, r * 0.8, r * 0.34, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // glow ring chip (portrait-chip placeholder: accent ring + initial)
+    // portrait-chip with glow ring (initial as fallback while loading)
     ctx.globalAlpha = 1;
     ctx.fillStyle = PALETTE.ink;
     ctx.strokeStyle = this.accent;
@@ -370,11 +377,20 @@ export class SafehouseScene {
     ctx.stroke();
 
     ctx.shadowBlur = 0;
-    ctx.fillStyle = this.accent;
-    ctx.font = `${Math.round(r)}px "SF Mono", Menlo, Consolas, monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.initial, c.x, cy + 1);
+    if (this.portrait) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(c.x, cy, r - 1, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(this.portrait, c.x - r, cy - r, r * 2, r * 2);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = this.accent;
+      ctx.font = `${Math.round(r)}px "SF Mono", Menlo, Consolas, monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.initial, c.x, cy + 1);
+    }
     ctx.restore();
   }
 

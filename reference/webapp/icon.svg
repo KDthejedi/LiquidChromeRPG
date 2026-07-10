@@ -1,0 +1,22 @@
+<svg viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0416"/><stop offset="1" stop-color="#04070d"/>
+    </linearGradient>
+    <filter id="b" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <rect width="192" height="192" rx="42" fill="url(#bg)"/>
+  <!-- receding grid -->
+  <g stroke="#2dd4bf" stroke-width="1.5" opacity="0.5" fill="none">
+    <path d="M20 172 L96 96"/><path d="M64 172 L96 96"/><path d="M108 172 L96 96"/>
+    <path d="M152 172 L96 96"/><path d="M172 172 L96 96"/>
+    <path d="M12 150 L180 150"/><path d="M28 128 L164 128"/><path d="M42 112 L150 112"/>
+  </g>
+  <!-- the burning sign -->
+  <g filter="url(#b)">
+    <circle cx="96" cy="72" r="16" fill="#f43f5e"/>
+    <circle cx="96" cy="72" r="7" fill="#ffd1d9"/>
+  </g>
+  <!-- jack cable -->
+  <path d="M96 88 C120 96 120 120 96 130" fill="none" stroke="#a78bfa" stroke-width="4"/>
+</svg>
