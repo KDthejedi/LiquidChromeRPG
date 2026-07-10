@@ -104,6 +104,21 @@ export class SafehouseScene {
       rx: 0.25 + frac(i + 1, 43) * 0.45,
       rate: 0.12 + frac(i + 1, 23) * 0.2,
     }));
+    this.puffs = [];        // footstep dust
+    this.lastLegSign = 1;
+
+    // film grain: a small noise tile, pattern-tiled with a frame jitter
+    const noise = document.createElement('canvas');
+    noise.width = noise.height = 128;
+    const nctx = noise.getContext('2d');
+    const nd = nctx.createImageData(128, 128);
+    for (let i = 0; i < nd.data.length; i += 4) {
+      const v = 120 + Math.random() * 135;
+      nd.data[i] = nd.data[i + 1] = nd.data[i + 2] = v;
+      nd.data[i + 3] = Math.random() < 0.35 ? 14 : 0;
+    }
+    nctx.putImageData(nd, 0, 0);
+    this.grain = this.ctx.createPattern(noise, 'repeat');
 
     this._resize = this.resize.bind(this);
     window.addEventListener('resize', this._resize);
@@ -236,6 +251,14 @@ export class SafehouseScene {
       const screenDx = dx - dy; // iso: +x goes right, +y goes left
       if (Math.abs(screenDx) > 0.01) this.facing = Math.sign(screenDx);
       this.walkT += step;
+      // a puff of dust at each footfall
+      const legSign = Math.sign(Math.sin(this.walkT * 9)) || 1;
+      if (legSign !== this.lastLegSign) {
+        this.lastLegSign = legSign;
+        const c = this.iso(this.player.x + 0.5, this.player.y + 0.5);
+        this.puffs.push({ x: c.x, y: c.y, t: 0 });
+        if (this.puffs.length > 6) this.puffs.shift();
+      }
       if (dist <= step) {
         this.player.x = next.x;
         this.player.y = next.y;
@@ -254,6 +277,8 @@ export class SafehouseScene {
       this.marker.t += dt;
       if (this.marker.t > 0.8) this.marker = null;
     }
+    for (const p of this.puffs) p.t += dt;
+    this.puffs = this.puffs.filter((p) => p.t < 0.55);
 
     this.draw(t);
     this._raf = requestAnimationFrame((tt) => this.frame(tt));
@@ -277,6 +302,9 @@ export class SafehouseScene {
       }
     }
     ctx.restore();
+
+    // light cast onto the floor by everything that glows
+    this.drawLightPools(t);
 
     // floor grid, with brighter seams on the panel joints
     ctx.save();
@@ -314,7 +342,8 @@ export class SafehouseScene {
       ctx.restore();
     }
 
-    // depth-sorted drawables: objects + player
+    // soft shadows under the furniture, then depth-sorted drawables
+    this.drawObjectShadows();
     const drawables = ROOM.objects.map((o) => ({
       depth: Math.max(...o.cells.map(([cx, cy]) => cx + cy)),
       fn: () => this.drawObject(o, t),
@@ -326,11 +355,12 @@ export class SafehouseScene {
     drawables.sort((a, b) => a.depth - b.depth);
     for (const d of drawables) d.fn();
 
-    // dust in the lamplight sits over everything in the room
+    // room air: slow haze bands, then dust in the lamplight
+    this.drawHaze(t);
     this.drawMotes(t);
 
-    // vignette + scanlines
-    this.drawGrain();
+    // vignette + scanlines + grain
+    this.drawGrain(t);
   }
 
   wallH() { return this.tileH * 2.6; }
@@ -418,6 +448,19 @@ export class SafehouseScene {
       ctx.fillStyle = Math.sin(l.seed) > 0.3 ? PALETTE.teal : PALETTE.blue;
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
     }
+    // a freighter drone crossing the skyline, running light blinking
+    const acX = 4.3 + ((s / 14) % 1) * 3.4;
+    const acF = 0.72 - ((s / 14) % 1) * 0.06;
+    const ac = this.wallN(acX, acF);
+    ctx.fillStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(ac.x - 2, ac.y, 4, 1.5);
+    if (Math.sin(s * 6) > 0.4) {
+      ctx.fillStyle = PALETTE.rose;
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(ac.x + 2.5, ac.y, 1.5, 1.5);
+    }
+
     // rain, stitched down the glass
     ctx.strokeStyle = PALETTE.teal;
     ctx.lineWidth = 1;
@@ -475,6 +518,31 @@ export class SafehouseScene {
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
 
+    // --- cables sagging along the top of the north wall ---
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.35;
+    for (const [ax, bx, sag] of [[0.3, 2.1, 0.1], [2.1, 3.9, 0.13], [8.2, 10.4, 0.09], [10.4, 11.8, 0.12]]) {
+      const a = this.wallN(ax, 0.96), b = this.wallN(bx, 0.96);
+      const m = this.wallN((ax + bx) / 2, 0.96 - sag);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.quadraticCurveTo(m.x, m.y, b.x, b.y);
+      ctx.stroke();
+    }
+
+    // --- wall clock (N wall), keeping honest time ---
+    const ck = this.wallN(3.3, 0.78);
+    const now = new Date();
+    ctx.strokeStyle = PALETTE.teal;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.arc(ck.x, ck.y, 6, 0, Math.PI * 2); ctx.stroke();
+    const hA = ((now.getHours() % 12) / 12 + now.getMinutes() / 720) * Math.PI * 2 - Math.PI / 2;
+    const mA = (now.getMinutes() / 60) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(ck.x, ck.y); ctx.lineTo(ck.x + Math.cos(hA) * 3, ck.y + Math.sin(hA) * 3);
+    ctx.moveTo(ck.x, ck.y); ctx.lineTo(ck.x + Math.cos(mA) * 4.8, ck.y + Math.sin(mA) * 4.8);
+    ctx.stroke();
+
     // --- shelves (W wall, 2..4.2): parts, bottles, nothing whole ---
     ctx.strokeStyle = PALETTE.dim;
     ctx.globalAlpha = 0.5;
@@ -497,6 +565,62 @@ export class SafehouseScene {
       this.tracePoly(this.wallQuad('W', wy, wy + w, f, f + h));
       ctx.stroke();
     }
+
+    // --- the plan, taped to the west wall: a marked-up district map ---
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.5;
+    this.tracePoly(this.wallQuad('W', 4.55, 5.5, 0.42, 0.78));
+    ctx.stroke();
+    // tape corners
+    ctx.fillStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.4;
+    for (const [wy, f] of [[4.55, 0.78], [5.5, 0.78], [4.55, 0.42], [5.5, 0.42]]) {
+      const p = this.wallW(wy, f);
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    // a coastline, a route, and the X that matters
+    ctx.strokeStyle = PALETTE.teal;
+    ctx.globalAlpha = 0.4;
+    this.tracePoly([
+      this.wallW(4.65, 0.72), this.wallW(4.9, 0.66), this.wallW(4.82, 0.58),
+      this.wallW(5.1, 0.52), this.wallW(5.4, 0.55),
+    ], false);
+    ctx.stroke();
+    ctx.setLineDash([2, 2]);
+    this.tracePoly([this.wallW(4.7, 0.48), this.wallW(5.0, 0.56), this.wallW(5.22, 0.63)], false);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = PALETTE.rose;
+    ctx.globalAlpha = 0.6;
+    const xm = this.wallW(5.24, 0.64);
+    ctx.beginPath();
+    ctx.moveTo(xm.x - 2.5, xm.y - 2.5); ctx.lineTo(xm.x + 2.5, xm.y + 2.5);
+    ctx.moveTo(xm.x + 2.5, xm.y - 2.5); ctx.lineTo(xm.x - 2.5, xm.y + 2.5);
+    ctx.stroke();
+
+    // --- a spare coat on a peg (W wall, near the south end) ---
+    const peg = this.wallW(7.9, 0.72);
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.moveTo(peg.x, peg.y); ctx.lineTo(peg.x, peg.y + 3); ctx.stroke();
+    const coatHang = [
+      { x: peg.x, y: peg.y + 3 },
+      { x: peg.x - 6, y: peg.y + 10 },
+      { x: peg.x - 5, y: peg.y + 30 },
+      { x: peg.x + 6, y: peg.y + 30 },
+      { x: peg.x + 5, y: peg.y + 9 },
+    ];
+    ctx.fillStyle = PALETTE.ink;
+    ctx.globalAlpha = 0.85;
+    this.tracePoly(coatHang);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.5;
+    this.tracePoly(coatHang);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(peg.x, peg.y + 4); ctx.lineTo(peg.x - 1, peg.y + 28);
+    ctx.stroke();
 
     // --- neon sign fragment (W wall, 5.8..7.1) — salvage, still arguing ---
     const buzz = Math.sin(s * 40) * 0.08;
@@ -614,6 +738,54 @@ export class SafehouseScene {
       ctx.ellipse(c.x, c.y, this.tileW * 0.01 + this.tileW * r * 0.4, this.tileH * r * 0.4, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
+
+    // drain grate, because everything down here eventually leaks
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.35;
+    this.tracePoly([this.iso(4.35, 7.35), this.iso(4.95, 7.35), this.iso(4.95, 7.95), this.iso(4.35, 7.95)]);
+    ctx.stroke();
+    for (let i = 1; i <= 3; i++) {
+      const a = this.iso(4.35 + i * 0.15, 7.38), b = this.iso(4.35 + i * 0.15, 7.92);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.3;
+    this.tracePoly([this.iso(4.35, 7.35), this.iso(4.95, 7.35), this.iso(4.95, 7.95), this.iso(4.35, 7.95)]);
+    ctx.fill();
+
+    // gaffer-tape cross where gear gets staged before a job
+    ctx.strokeStyle = PALETTE.teal;
+    ctx.globalAlpha = 0.22;
+    ctx.lineWidth = 2;
+    const tc = this.iso(9.7, 4.5);
+    ctx.beginPath();
+    ctx.moveTo(tc.x - 7, tc.y - 3.5); ctx.lineTo(tc.x + 7, tc.y + 3.5);
+    ctx.moveTo(tc.x + 7, tc.y - 3.5); ctx.lineTo(tc.x - 7, tc.y + 3.5);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // empties beside the cot
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.4;
+    for (const [bx, by, bh] of [[3.25, 1.35, 9], [3.42, 1.6, 7]]) {
+      const p = this.iso(bx, by);
+      ctx.beginPath(); ctx.moveTo(p.x - 1.5, p.y); ctx.lineTo(p.x - 1.5, p.y - bh); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p.x + 1.5, p.y); ctx.lineTo(p.x + 1.5, p.y - bh); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, 1.5, 0.8, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(p.x, p.y - bh, 1.5, 0.8, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // crumpled pages that didn't survive the planning
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.3;
+    for (const [px, py] of [[8.6, 2.3], [9.05, 2.7]]) {
+      const p = this.iso(px, py);
+      this.tracePoly([
+        { x: p.x - 3, y: p.y - 1 }, { x: p.x - 1, y: p.y - 3 }, { x: p.x + 2.5, y: p.y - 2 },
+        { x: p.x + 3, y: p.y + 1 }, { x: p.x - 0.5, y: p.y + 2.5 },
+      ]);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -679,7 +851,7 @@ export class SafehouseScene {
     switch (obj.id) {
       case 'cot': this.drawCot(); break;
       case 'deck': this.drawDeck(t); break;
-      case 'bench': this.drawBench(); break;
+      case 'bench': this.drawBench(t); break;
       case 'lamp': this.drawLamp(t); break;
       case 'door': this.drawDoor(t); break;
       case 'crates': this.drawCrates(); break;
@@ -737,9 +909,18 @@ export class SafehouseScene {
     ctx.globalAlpha = 0.6;
     this.tracePoly(this.liftedQuad(9.35, 1.55, 10.35, 1.85, 0.52));
     ctx.stroke();
+    // a mug that's been cold for hours
+    const mug = this.iso(10.55, 1.65);
+    const mh = this.u(0.52);
+    ctx.strokeStyle = PALETTE.violet;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.moveTo(mug.x - 2, mug.y - mh); ctx.lineTo(mug.x - 2, mug.y - mh - 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(mug.x + 2, mug.y - mh); ctx.lineTo(mug.x + 2, mug.y - mh - 5); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(mug.x, mug.y - mh - 5, 2, 1, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(mug.x + 3.5, mug.y - mh - 2.5, 1.6, -Math.PI / 2, Math.PI / 2); ctx.stroke();
   }
 
-  drawBench() {
+  drawBench(t) {
     const ctx = this.ctx;
     ctx.strokeStyle = PALETTE.violet;
     this.drawLegs(1, 6, 3, 7, 0.38);
@@ -760,6 +941,30 @@ export class SafehouseScene {
     ctx.lineTo(toolBase.x, toolBase.y - this.u(0.72));
     ctx.stroke();
     ctx.strokeRect(toolBase.x - 4, toolBase.y - this.u(0.78), 8, 4);
+    // hotplate and kettle, the only thing here that gets daily use
+    const kb = this.iso(2.65, 6.15);
+    const kh = this.u(0.46);
+    ctx.strokeStyle = PALETTE.amber;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.ellipse(kb.x, kb.y - kh, 4.5, 2.2, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(kb.x, kb.y - kh - 5, 3.2, 1.6, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(kb.x - 3.2, kb.y - kh - 5); ctx.lineTo(kb.x - 2.2, kb.y - kh - 1);
+    ctx.moveTo(kb.x + 3.2, kb.y - kh - 5); ctx.lineTo(kb.x + 2.2, kb.y - kh - 1);
+    ctx.moveTo(kb.x + 3, kb.y - kh - 6.5); ctx.lineTo(kb.x + 5, kb.y - kh - 8);
+    ctx.stroke();
+    // steam, when you look closely
+    ctx.strokeStyle = PALETTE.dim;
+    for (let i = 0; i < 3; i++) {
+      const ph = ((t / 2600) + i * 0.33) % 1;
+      const sy = kb.y - kh - 8 - ph * 16;
+      const sway = Math.sin(ph * Math.PI * 3 + i) * 2.5;
+      ctx.globalAlpha = 0.28 * (1 - ph);
+      ctx.beginPath();
+      ctx.moveTo(kb.x + sway, sy);
+      ctx.quadraticCurveTo(kb.x + sway + 2, sy - 3, kb.x + sway, sy - 6);
+      ctx.stroke();
+    }
   }
 
   drawLamp(t) {
@@ -830,6 +1035,23 @@ export class SafehouseScene {
 
   drawCrates() {
     const ctx = this.ctx;
+    // duffel slumped against the stack, strap trailing
+    const df = this.iso(9.55, 7.55);
+    ctx.fillStyle = PALETTE.ink;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.ellipse(df.x, df.y - 5, 11, 6, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.teal;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.ellipse(df.x, df.y - 5, 11, 6, -0.15, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(df.x - 4, df.y - 10.5); ctx.quadraticCurveTo(df.x, df.y - 13, df.x + 4, df.y - 10.5);
+    ctx.moveTo(df.x + 9, df.y - 2); ctx.quadraticCurveTo(df.x + 14, df.y + 1, df.x + 17, df.y - 1);
+    ctx.stroke();
+
     ctx.strokeStyle = PALETTE.teal;
     ctx.globalAlpha = 0.75;
     // big crate with an X brace on the camera-facing side
@@ -869,6 +1091,16 @@ export class SafehouseScene {
     const hemW = r * 1.3;                            // half coat hem width — coats flare down
 
     ctx.save();
+    // footstep dust, fading behind the walk
+    for (const p of this.puffs) {
+      const life = p.t / 0.55;
+      ctx.strokeStyle = PALETTE.dim;
+      ctx.globalAlpha = 0.3 * (1 - life);
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 2 + life * 6, 1 + life * 2.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     // ground shadow
     ctx.fillStyle = this.accent;
     ctx.globalAlpha = 0.18;
@@ -881,20 +1113,47 @@ export class SafehouseScene {
     ctx.lineWidth = 1.6;
     ctx.globalAlpha = 0.75;
     const stride = walking ? legPhase * r * 0.55 : r * 0.22;
+    const footL = { x: c.x - r * 0.3 - stride, y: c.y };
+    const footR = { x: c.x + r * 0.3 + (walking ? -stride : 0), y: c.y - (walking ? Math.abs(legPhase) * 1.5 : 0) };
     ctx.beginPath();
     ctx.moveTo(c.x - r * 0.3 + lean * 0.3, hemY);
-    ctx.lineTo(c.x - r * 0.3 - stride, c.y);
+    ctx.lineTo(footL.x, footL.y);
     ctx.moveTo(c.x + r * 0.3 + lean * 0.3, hemY);
-    ctx.lineTo(c.x + r * 0.3 + (walking ? -stride : 0), c.y - (walking ? Math.abs(legPhase) * 1.5 : 0));
+    ctx.lineTo(footR.x, footR.y);
     ctx.stroke();
+    // boots — a short foot line in the facing direction
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.moveTo(footL.x, footL.y); ctx.lineTo(footL.x + this.facing * r * 0.38, footL.y - 0.5);
+    ctx.moveTo(footR.x, footR.y); ctx.lineTo(footR.x + this.facing * r * 0.38, footR.y - 0.5);
+    ctx.stroke();
+    ctx.lineWidth = 1.6;
 
     // the coat — hooded silhouette, ink-filled, accent rim, flaring to the hem
+    // hem corners kick with the stride
+    const kick = walking ? Math.sin(this.walkT * 9 + Math.PI / 3) * r * 0.16 : 0;
     const coat = [
       { x: c.x - shW + lean, y: shoulderY },
       { x: c.x + shW + lean, y: shoulderY },
-      { x: c.x + hemW + lean * 0.3, y: hemY },
-      { x: c.x - hemW + lean * 0.3, y: hemY },
+      { x: c.x + hemW + lean * 0.3 + kick, y: hemY - Math.abs(kick) * 0.4 },
+      { x: c.x - hemW + lean * 0.3 - kick, y: hemY - Math.abs(kick) * 0.4 },
     ];
+    // bag on the off-side hip, mostly hidden behind the coat
+    const beltYd = beltY;
+    const bagX = c.x + this.facing * (hemW * 0.92) + lean * 0.4;
+    const bagY = beltYd + (hemY - beltYd) * 0.5;
+    ctx.fillStyle = PALETTE.ink;
+    ctx.globalAlpha = 0.95;
+    ctx.beginPath();
+    ctx.ellipse(bagX, bagY, r * 0.4, r * 0.3, -0.2 * this.facing, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = this.accent;
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.ellipse(bagX, bagY, r * 0.4, r * 0.3, -0.2 * this.facing, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.fillStyle = PALETTE.ink;
     ctx.globalAlpha = 0.92;
     this.tracePoly(coat);
@@ -907,6 +1166,15 @@ export class SafehouseScene {
     this.tracePoly(coat);
     ctx.stroke();
     ctx.shadowBlur = 0;
+    // rim light down the facing edge
+    const rimTop = coat[this.facing > 0 ? 1 : 0];
+    const rimBot = coat[this.facing > 0 ? 2 : 3];
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(rimTop.x, rimTop.y); ctx.lineTo(rimBot.x, rimBot.y);
+    ctx.stroke();
+    ctx.lineWidth = 1.3;
     // coat seam + belt
     ctx.globalAlpha = 0.45;
     ctx.beginPath();
@@ -918,6 +1186,17 @@ export class SafehouseScene {
     ctx.moveTo(c.x - beltW + lean * 0.6, beltY);
     ctx.lineTo(c.x + beltW + lean * 0.6, beltY);
     ctx.stroke();
+    // belt buckle glint
+    ctx.fillStyle = this.accent;
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(c.x + lean * 0.6 - 1.5, beltY - 1.5, 3, 3);
+    // bag strap across the chest
+    ctx.strokeStyle = this.accent;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(c.x - this.facing * shW * 0.7 + lean, shoulderY + 2);
+    ctx.lineTo(c.x + this.facing * beltW * 0.85 + lean * 0.5, beltY + 2);
+    ctx.stroke();
     // arms — a swing against the legs when walking
     const swing = walking ? legPhase * r * 0.4 : 0;
     ctx.globalAlpha = 0.6;
@@ -928,13 +1207,29 @@ export class SafehouseScene {
     ctx.lineTo(c.x + beltW * 0.95 - swing + lean * 0.5, beltY + 3);
     ctx.stroke();
 
+    // hood behind the head — a filled crescent of ink over the shoulders
+    ctx.fillStyle = PALETTE.ink;
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(c.x + lean, headY - 1, r + 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    // collar rising to meet it
+    ctx.strokeStyle = this.accent;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(c.x - shW * 0.55 + lean, shoulderY);
+    ctx.lineTo(c.x - r * 0.75 + lean, headY + r * 0.75);
+    ctx.moveTo(c.x + shW * 0.55 + lean, shoulderY);
+    ctx.lineTo(c.x + r * 0.75 + lean, headY + r * 0.75);
+    ctx.stroke();
+
     // head: portrait-chip with glow ring (initial as fallback while loading)
     ctx.globalAlpha = 1;
     ctx.fillStyle = PALETTE.ink;
     ctx.strokeStyle = this.accent;
     ctx.lineWidth = 2;
     ctx.shadowColor = this.accent;
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 12 + 4 * Math.sin(t / 600);
     ctx.beginPath();
     ctx.arc(c.x + lean, headY, r, 0, Math.PI * 2);
     ctx.fill();
@@ -963,13 +1258,95 @@ export class SafehouseScene {
     ctx.restore();
   }
 
-  drawGrain() {
+  // pools of light on the floor from every source that glows
+  drawLightPools(t) {
+    const ctx = this.ctx;
+    ctx.save();
+
+    // cold wash falling in from the window, stretched across the floor
+    const w0 = this.iso(6, 0), w1 = this.iso(7.6, 2.8);
+    const wash = ctx.createLinearGradient(w0.x, w0.y, w1.x, w1.y);
+    wash.addColorStop(0, 'rgba(56, 189, 248, 0.05)');
+    wash.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    ctx.fillStyle = wash;
+    this.tracePoly([this.iso(4, 0), this.iso(8, 0), this.iso(9.4, 2.8), this.iso(2.6, 2.8)]);
+    ctx.fill();
+
+    // monitor spill by the deck, breathing with the flicker
+    const deckC = this.iso(9.9, 2.1);
+    const mg = ctx.createRadialGradient(deckC.x, deckC.y, 2, deckC.x, deckC.y, this.tileW * 1.7);
+    const mA = 0.045 + 0.012 * Math.sin(t / 320);
+    mg.addColorStop(0, `rgba(45, 212, 191, ${mA})`);
+    mg.addColorStop(1, 'rgba(45, 212, 191, 0)');
+    ctx.fillStyle = mg;
+    ctx.beginPath();
+    ctx.ellipse(deckC.x, deckC.y, this.tileW * 1.7, this.tileH * 1.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // neon bleed at the base of the west wall
+    const nC = this.iso(0.8, 6.4);
+    const ng = ctx.createRadialGradient(nC.x, nC.y, 1, nC.x, nC.y, this.tileW * 1.2);
+    const nDrop = Math.sin(t / 1000 * 1.9 + 1.3) > 0.94 ? 0.15 : 1;
+    ng.addColorStop(0, `rgba(244, 63, 94, ${0.04 * nDrop})`);
+    ng.addColorStop(1, 'rgba(244, 63, 94, 0)');
+    ctx.fillStyle = ng;
+    ctx.beginPath();
+    ctx.ellipse(nC.x, nC.y, this.tileW * 1.2, this.tileH * 1.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawObjectShadows() {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.32;
+    for (const [x, y, rx, ry] of [
+      [2, 1.5, 1.15, 0.62], [10, 1.55, 1.15, 0.62], [2, 6.5, 1.15, 0.62],
+      [6.5, 4.55, 0.4, 0.28], [10.95, 7.5, 1.1, 0.62],
+    ]) {
+      const c = this.iso(x, y);
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y + 2, this.tileW * rx * 0.52, this.tileH * ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawHaze(t) {
+    const ctx = this.ctx;
+    ctx.save();
+    for (let i = 0; i < 3; i++) {
+      const drift = Math.sin(t / 9000 + i * 2.1) * this.tileW * 0.8;
+      const c = this.iso(3.5 + i * 2.6, 2.5 + i * 1.8);
+      const g = ctx.createRadialGradient(c.x + drift, c.y - 24, 4, c.x + drift, c.y - 24, this.tileW * 2.4);
+      g.addColorStop(0, 'rgba(45, 212, 191, 0.016)');
+      g.addColorStop(1, 'rgba(45, 212, 191, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(c.x + drift, c.y - 24, this.tileW * 2.4, this.tileH * 2.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawGrain(t) {
     const ctx = this.ctx;
     ctx.save();
     // scanlines
     ctx.globalAlpha = 0.05;
     ctx.fillStyle = '#000';
     for (let y = 0; y < this.viewH; y += 4) ctx.fillRect(0, y, this.viewW, 1);
+    // film grain, jittered so it lives
+    if (this.grain) {
+      const j = Math.floor(t / 80) % 4;
+      ctx.globalAlpha = 1;
+      ctx.save();
+      ctx.translate(-j * 37, -j * 23);
+      ctx.fillStyle = this.grain;
+      ctx.fillRect(0, 0, this.viewW + 148, this.viewH + 92);
+      ctx.restore();
+    }
     // vignette
     const g = ctx.createRadialGradient(
       this.viewW / 2, this.viewH / 2, Math.min(this.viewW, this.viewH) * 0.35,
