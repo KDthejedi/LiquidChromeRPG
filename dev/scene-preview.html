@@ -14,13 +14,17 @@
 <canvas id="scene"></canvas>
 <script type="module">
   import { SafehouseScene } from '../js/scene.js';
+  import { OPERATIVES } from '../js/data.js';
+  // ?op=zen|socrates|jackal|hemlock — figure/portrait/accent per operative
   // ?bg=path&calx=&caly=&caltw=&cal — test/calibrate a painted backdrop
   const q = new URLSearchParams(location.search);
   const bg = q.get('bg');
+  const op = OPERATIVES[q.get('op')] ?? OPERATIVES.zen;
   window.__scene = new SafehouseScene(document.getElementById('scene'), {
-    accent: '#38bdf8',
-    initial: 'Z',
-    portrait: '../assets/portraits/zen.png',
+    accent: op.accent,
+    initial: op.name[0],
+    portrait: '../' + op.portrait,
+    figure: op.id,
     onCaption: () => {},
     backdrop: bg ? {
       src: bg,

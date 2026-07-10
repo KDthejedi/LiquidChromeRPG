@@ -43,6 +43,7 @@
         <div class="hud-right">
           <span id="hud-credits" class="hud-credits"></span>
           <button id="btn-sheet" class="hud-btn">SHEET</button>
+          <button id="btn-snd" class="hud-btn">SND</button>
           <button id="btn-menu" class="hud-btn">SYS</button>
         </div>
       </header>
@@ -73,6 +74,16 @@
         </div>
         <h3>Chrome specials</h3>
         <ul id="sheet-kit" class="kit-list"></ul>
+      </aside>
+
+      <!-- The deck's terminal -->
+      <aside id="terminal-panel" class="panel terminal hidden">
+        <div class="panel-head">
+          <h2 id="term-title">CONSOLE</h2>
+          <button class="close-btn" data-close="terminal-panel">×</button>
+        </div>
+        <pre id="term-body"></pre>
+        <button id="term-close" class="term-btn">JACK OUT</button>
       </aside>
 
       <!-- System menu overlay -->

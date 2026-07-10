@@ -99,13 +99,28 @@ const BACKDROP = {
   },
 };
 
+// Per-operative figure builds: same skeleton, different body. sh/hem scale
+// the coat, h the height, bob the idle/walk sway, hood the hood depth, puff
+// the footstep dust, gadget the signature gear.
+const FIGURES = {
+  zen: { sh: 0.85, hem: 1.12, h: 2.42, bob: 1.0, hood: 1.0, puff: 0.8, gadget: 'deck' },
+  socrates: { sh: 1.08, hem: 1.5, h: 2.3, bob: 0.65, hood: 0.55, puff: 1.0, gadget: 'satchel' },
+  jackal: { sh: 1.25, hem: 1.28, h: 2.5, bob: 0.45, hood: 0.25, puff: 1.5, gadget: 'holster' },
+  hemlock: { sh: 0.78, hem: 1.05, h: 2.28, bob: 0.35, hood: 1.35, puff: 0.4, gadget: 'blade' },
+};
+
 export class SafehouseScene {
-  constructor(canvas, { accent, initial, portrait, onCaption, backdrop }) {
+  constructor(canvas, {
+    accent, initial, portrait, onCaption, onInteract, onSfx, figure, backdrop,
+  }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.accent = accent;
     this.initial = initial;
     this.onCaption = onCaption;
+    this.onInteract = onInteract || null;
+    this.onSfx = onSfx || (() => {});
+    this.fig = FIGURES[figure] || FIGURES.zen;
 
     this.portrait = null;
     if (portrait) {
@@ -260,14 +275,20 @@ export class SafehouseScene {
       target,
     );
     if (!path) return;
+    this.onSfx('move');
     this.path = path;
     this.pendingObject = obj || null;
     this.marker = { x: target.x, y: target.y, t: 0 };
     if (path.length === 0 && obj) {
       // already standing next to it
-      this.onCaption(obj.text);
+      this.resolveInteract(obj);
       this.pendingObject = null;
     }
+  }
+
+  resolveInteract(obj) {
+    if (this.onInteract) this.onInteract(obj);
+    else this.onCaption(obj.text);
   }
 
   nearestOpenNeighbor(obj, from) {
@@ -341,7 +362,7 @@ export class SafehouseScene {
         this.player.y = next.y;
         this.path.shift();
         if (!this.path.length && this.pendingObject) {
-          this.onCaption(this.pendingObject.text);
+          this.resolveInteract(this.pendingObject);
           this.pendingObject = null;
         }
       } else {
@@ -1269,10 +1290,11 @@ export class SafehouseScene {
   drawPlayer(t) {
     const ctx = this.ctx;
     const c = this.iso(this.player.x + 0.5, this.player.y + 0.5);
+    const fig = this.fig;
     const walking = this.path.length > 0;
-    const H = this.tileH * 2.35;                     // figure height, floor to crown
+    const H = this.tileH * fig.h;                    // figure height, floor to crown
     const r = Math.max(this.tileH * 0.46, 9);        // head-chip radius
-    const bob = walking ? Math.sin(this.walkT * 9) * 1.6 : Math.sin(t / 900) * 1.2;
+    const bob = (walking ? Math.sin(this.walkT * 9) * 1.6 : Math.sin(t / 900) * 1.2) * fig.bob;
     const lean = walking ? this.facing * H * 0.045 : 0;
     const legPhase = Math.sin(this.walkT * 9);
 
@@ -1280,8 +1302,8 @@ export class SafehouseScene {
     const beltY = c.y - H * 0.45 + bob * 0.6;
     const shoulderY = c.y - H * 0.68 + bob;
     const headY = c.y - H * 0.68 - r - 2 + bob;
-    const shW = r * 0.95;                            // half shoulder width
-    const hemW = r * 1.3;                            // half coat hem width — coats flare down
+    const shW = r * 0.95 * fig.sh;                   // half shoulder width
+    const hemW = r * 1.3 * fig.hem;                  // half coat hem width — coats flare down
 
     ctx.save();
     // footstep dust, fading behind the walk
@@ -1290,7 +1312,7 @@ export class SafehouseScene {
       ctx.strokeStyle = PALETTE.dim;
       ctx.globalAlpha = 0.3 * (1 - life);
       ctx.beginPath();
-      ctx.ellipse(p.x, p.y, 2 + life * 6, 1 + life * 2.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(p.x, p.y, (2 + life * 6) * fig.puff, (1 + life * 2.5) * fig.puff, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -1337,20 +1359,23 @@ export class SafehouseScene {
       { x: c.x + hemW + lean * 0.3 + kick, y: hemY - Math.abs(kick) * 0.4 },
       { x: c.x - hemW + lean * 0.3 - kick, y: hemY - Math.abs(kick) * 0.4 },
     ];
-    // bag on the off-side hip, mostly hidden behind the coat
-    const beltYd = beltY;
+    // bag on the off-side hip, mostly hidden behind the coat — the medics
+    // carry the big satchel, the poisoner a slim pouch, the rest travel light
+    const bagScale = fig.gadget === 'satchel' ? 1.15 : fig.gadget === 'blade' ? 0.7 : 0;
     const bagX = c.x + this.facing * (hemW * 0.92) + lean * 0.4;
-    const bagY = beltYd + (hemY - beltYd) * 0.5;
-    ctx.fillStyle = PALETTE.ink;
-    ctx.globalAlpha = 0.95;
-    ctx.beginPath();
-    ctx.ellipse(bagX, bagY, r * 0.4, r * 0.3, -0.2 * this.facing, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = this.accent;
-    ctx.globalAlpha = 0.45;
-    ctx.beginPath();
-    ctx.ellipse(bagX, bagY, r * 0.4, r * 0.3, -0.2 * this.facing, 0, Math.PI * 2);
-    ctx.stroke();
+    const bagY = beltY + (hemY - beltY) * 0.5;
+    if (bagScale) {
+      ctx.fillStyle = PALETTE.ink;
+      ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      ctx.ellipse(bagX, bagY, r * 0.4 * bagScale, r * 0.3 * bagScale, -0.2 * this.facing, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = this.accent;
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.ellipse(bagX, bagY, r * 0.4 * bagScale, r * 0.3 * bagScale, -0.2 * this.facing, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     ctx.fillStyle = PALETTE.ink;
     ctx.globalAlpha = 0.92;
@@ -1388,13 +1413,54 @@ export class SafehouseScene {
     ctx.fillStyle = this.accent;
     ctx.globalAlpha = 0.7;
     ctx.fillRect(c.x + lean * 0.6 - 1.5, beltY - 1.5, 3, 3);
-    // bag strap across the chest
+    // signature gear per operative
     ctx.strokeStyle = this.accent;
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath();
-    ctx.moveTo(c.x - this.facing * shW * 0.7 + lean, shoulderY + 2);
-    ctx.lineTo(c.x + this.facing * beltW * 0.85 + lean * 0.5, beltY + 2);
-    ctx.stroke();
+    if (fig.gadget === 'holster') {
+      // Jackal: squared epaulets, a second belt line, a holster at the hip
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(c.x - shW + lean, shoulderY - 1); ctx.lineTo(c.x - shW * 0.55 + lean, shoulderY - 1);
+      ctx.moveTo(c.x + shW + lean, shoulderY - 1); ctx.lineTo(c.x + shW * 0.55 + lean, shoulderY - 1);
+      ctx.stroke();
+      ctx.lineWidth = 1.3;
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.moveTo(c.x - beltW + lean * 0.6, beltY + 3.5);
+      ctx.lineTo(c.x + beltW + lean * 0.6, beltY + 3.5);
+      ctx.stroke();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeRect(c.x + this.facing * beltW * 0.7 + lean * 0.6 - 2, beltY + 1, 4, 7);
+    } else if (fig.gadget === 'blade') {
+      // Hemlock: a sheathed blade over the off shoulder
+      ctx.globalAlpha = 0.65;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(c.x - this.facing * shW * 0.6 + lean, shoulderY + 1);
+      ctx.lineTo(c.x - this.facing * (shW * 0.6 + r * 0.9) + lean, headY - r * 0.55);
+      ctx.stroke();
+      ctx.lineWidth = 1.3;
+    } else if (fig.gadget === 'deck') {
+      // Zen: the slim deck slung across the back, edge over the shoulder
+      ctx.globalAlpha = 0.7;
+      const dxs = -this.facing;
+      ctx.strokeRect(c.x + dxs * (shW * 0.9) + lean - 3, shoulderY - r * 0.5, 6, r * 0.8);
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.moveTo(c.x + dxs * shW * 0.9 + lean, shoulderY + 2);
+      ctx.lineTo(c.x + this.facing * beltW * 0.85 + lean * 0.5, beltY + 2);
+      ctx.stroke();
+    } else {
+      // Socrates: satchel strap, and a slow diagnostic pulse on the bag
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.moveTo(c.x - this.facing * shW * 0.7 + lean, shoulderY + 2);
+      ctx.lineTo(c.x + this.facing * beltW * 0.85 + lean * 0.5, beltY + 2);
+      ctx.stroke();
+      ctx.fillStyle = this.accent;
+      ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t / 500);
+      ctx.fillRect(bagX - 1, bagY - 1, 2, 2);
+    }
     // arms — a swing against the legs when walking
     const swing = walking ? legPhase * r * 0.4 : 0;
     ctx.globalAlpha = 0.6;
@@ -1405,11 +1471,12 @@ export class SafehouseScene {
     ctx.lineTo(c.x + beltW * 0.95 - swing + lean * 0.5, beltY + 3);
     ctx.stroke();
 
-    // hood behind the head — a filled crescent of ink over the shoulders
+    // hood behind the head — a filled crescent of ink over the shoulders,
+    // deeper on the ones who live in it
     ctx.fillStyle = PALETTE.ink;
     ctx.globalAlpha = 1;
     ctx.beginPath();
-    ctx.arc(c.x + lean, headY - 1, r + 3.5, 0, Math.PI * 2);
+    ctx.arc(c.x + lean, headY - 1, r + 2 + 2.5 * fig.hood, 0, Math.PI * 2);
     ctx.fill();
     // collar rising to meet it
     ctx.strokeStyle = this.accent;
@@ -1449,10 +1516,20 @@ export class SafehouseScene {
     }
     // hood line over the chip
     ctx.strokeStyle = this.accent;
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.3 + 0.25 * fig.hood;
     ctx.beginPath();
-    ctx.arc(c.x + lean, headY, r + 2.5, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.arc(c.x + lean, headY, r + 1 + 2 * fig.hood, Math.PI * 0.85, Math.PI * 2.15);
     ctx.stroke();
+
+    // Zen only: the ghost glitch — the ring splits chromatic for a blink
+    if (fig.gadget === 'deck' && (t / 1000) % 4 < 0.14) {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = PALETTE.rose;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.arc(c.x + lean + 2, headY, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = PALETTE.teal;
+      ctx.beginPath(); ctx.arc(c.x + lean - 2, headY, r, 0, Math.PI * 2); ctx.stroke();
+    }
     ctx.restore();
   }
 

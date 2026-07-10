@@ -3,6 +3,7 @@ import {
   save, load, wipeAll, slotInfo, latestSlot, exportSave, importSave,
 } from './save.js';
 import { SafehouseScene } from './scene.js';
+import { audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,6 +16,7 @@ let activeSlot = 1;
 function showSelect() {
   $('game-screen').classList.add('hidden');
   $('select-screen').classList.remove('hidden');
+  audio.playMusic('assets/music/title.mp3', 0.4);
   const row = $('operative-cards');
   row.innerHTML = '';
   for (const op of Object.values(OPERATIVES)) {
@@ -49,12 +51,25 @@ function startGame() {
   renderHud();
   renderSheet();
 
+  audio.playMusic('assets/music/game.mp3', 0.3);
+
   if (scene) scene.destroy();
   scene = new SafehouseScene($('scene'), {
     accent: op.accent,
     initial: char.name[0],
     portrait: op.portrait,
+    figure: op.id,
     onCaption: setCaption,
+    onSfx: (name) => audio.sfx(name),
+    onInteract: (obj) => {
+      audio.sfx('interact');
+      if (obj.id === 'deck') {
+        setCaption(null);
+        openTerminal();
+      } else {
+        setCaption(obj.text);
+      }
+    },
   });
   window.__scene = scene;
   setCaption(
@@ -114,6 +129,40 @@ function renderSheet() {
     .join('');
 }
 
+// ---------- the terminal ----------
+
+let termTimer = null;
+
+function typeInto(el, text) {
+  clearInterval(termTimer);
+  const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (still) { el.textContent = text; return; }
+  el.textContent = '';
+  let i = 0;
+  termTimer = setInterval(() => {
+    el.textContent += text[i];
+    if (i % 3 === 0 && text[i] !== ' ') audio.sfx('key');
+    i += 1;
+    if (i >= text.length) clearInterval(termTimer);
+  }, 14);
+}
+
+function openTerminal() {
+  const op = OPERATIVES[state.character.opId];
+  togglePanel('terminal-panel');
+  audio.sfx('beep');
+  $('term-title').textContent = op.deck.toUpperCase();
+  typeInto($('term-body'), [
+    '> clean boot — liquid chrome at 100%. it holds. it actually holds.',
+    '> 1 message held · routed through twelve encrypted addresses',
+    '> sender: KIROS',
+    '',
+    `"Hello ${state.character.name}. I'm Kiros. You don't know me, but I know you — everything they did, but most importantly, everything you did. ${op.kirosRead} I have an offer for you. Come and meet me at the old market, in the deep end of the slums. Don't keep me waiting."`,
+    '',
+    '> connection closed. the cursor blinks.',
+  ].join('\n'));
+}
+
 // ---------- panels & menu ----------
 
 function togglePanel(id) {
@@ -121,13 +170,31 @@ function togglePanel(id) {
   const opening = el.classList.contains('hidden');
   $('sheet-panel').classList.add('hidden');
   $('menu-panel').classList.add('hidden');
+  $('terminal-panel').classList.add('hidden');
+  clearInterval(termTimer);
   if (opening) el.classList.remove('hidden');
+  audio.sfx(opening ? 'open' : 'close');
 }
 
 $('btn-sheet').addEventListener('click', () => togglePanel('sheet-panel'));
 $('btn-menu').addEventListener('click', () => { renderSlots(); togglePanel('menu-panel'); });
 document.querySelectorAll('.close-btn').forEach((btn) =>
-  btn.addEventListener('click', () => $(btn.dataset.close).classList.add('hidden')));
+  btn.addEventListener('click', () => {
+    $(btn.dataset.close).classList.add('hidden');
+    clearInterval(termTimer);
+    audio.sfx('close');
+  }));
+$('term-close').addEventListener('click', () => {
+  $('terminal-panel').classList.add('hidden');
+  clearInterval(termTimer);
+  audio.sfx('close');
+});
+
+function renderSndButton() {
+  $('btn-snd').textContent = audio.muted ? 'SND ✕' : 'SND';
+}
+$('btn-snd').addEventListener('click', () => { audio.toggleMuted(); renderSndButton(); });
+renderSndButton();
 
 function renderSlots() {
   const list = $('slot-list');
@@ -145,7 +212,9 @@ function renderSlots() {
     btnSave.textContent = 'SAVE';
     btnSave.addEventListener('click', () => {
       activeSlot = info.slot;
-      $('menu-status').textContent = save(state, info.slot)
+      const ok = save(state, info.slot);
+      if (ok) audio.sfx('save');
+      $('menu-status').textContent = ok
         ? 'Saved. The wire remembers, even when you’d rather it didn’t.'
         : 'Save failed — storage refused the write.';
       renderSlots();
@@ -211,4 +280,13 @@ if (bootSlot) {
   startGame();
 } else {
   showSelect();
+}
+
+// dev hook: ?tap=x,y resolves the interactable on that grid cell right at
+// boot, so headless tests can assert on UI flows (harmless in normal play)
+const tapQ = new URLSearchParams(location.search).get('tap');
+if (tapQ && scene) {
+  const [tx, ty] = tapQ.split(',').map(Number);
+  const obj = scene.room.objects.find((o) => o.cells.some(([cx, cy]) => cx === tx && cy === ty));
+  if (obj) scene.resolveInteract(obj);
 }

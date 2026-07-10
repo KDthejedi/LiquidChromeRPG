@@ -1,9 +1,11 @@
 <!DOCTYPE html><html><body><script>
 // seed a slot-1 save, then boot the real game — for screenshotting in-game UI
+// muted: headless virtual-time stalls on looping media elements
+localStorage.setItem('liquidchrome_mute', '1');
 localStorage.setItem('liquidchrome_save_v1_s1', JSON.stringify({ v: 1, at: 1, state: { character: {
   opId: 'zen', name: 'ZEN', role: 'Corporate ghost',
   attrs: { Body: 4, Reflex: 6, Mind: 9, Presence: 4, Signal: 7 },
   skills: {}, credits: 350, health: 36, chrome: 48, static: 0,
 } } }));
-location.href = '/';
+location.href = '/' + location.search;
 </script></body></html>

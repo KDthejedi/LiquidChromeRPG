@@ -12,6 +12,7 @@ export const OPERATIVES = {
   zen: {
     id: 'zen',
     portrait: 'assets/portraits/zen.png',
+    kirosRead: 'Kaisei never even learned your face — just your profile, and how to burn it. I know both.',
     name: 'ZEN',
     role: 'Corporate ghost',
     accent: '#38bdf8',
@@ -34,6 +35,7 @@ export const OPERATIVES = {
   socrates: {
     id: 'socrates',
     portrait: 'assets/portraits/socrates.png',
+    kirosRead: 'You stole from BiTechs to cut for people who couldn’t pay, and they called it mercy when they only took your chrome.',
     name: 'SOCRATES',
     role: 'Struck-off surgeon',
     accent: '#2dd4bf',
@@ -56,6 +58,7 @@ export const OPERATIVES = {
   jackal: {
     id: 'jackal',
     portrait: 'assets/portraits/jackal.png',
+    kirosRead: 'You caught your own colonels bleeding Griot dry, and they hung the whole rot on you. I’ve read the real file.',
     name: 'JACKAL',
     role: 'Ex-corp military',
     accent: '#f43f5e',
@@ -78,6 +81,7 @@ export const OPERATIVES = {
   hemlock: {
     id: 'hemlock',
     portrait: 'assets/portraits/hemlock.png',
+    kirosRead: 'A room full of your own kind was sent to close your account, and they still don’t know how you walked out. I do.',
     name: 'HEMLOCK',
     role: 'Assassin · poisoner',
     accent: '#a78bfa',

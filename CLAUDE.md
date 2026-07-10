@@ -16,7 +16,8 @@ runs `python3 -m http.server 8642`).
 - `js/data.js` — operative data (WORLD.md §6 mapped through D2 attributes/skills), vitals derivation
 - `js/save.js` — versioned localStorage save (key `liquidchrome_save_v1`)
 - `js/scene.js` — isometric canvas renderer: code-drawn neon wireframe, BFS tap-to-move, glow-ring actor chips (D5: no sprites, ever)
-- `js/main.js` — UI wiring: operative select, HUD, character sheet, SYS menu
+- `js/main.js` — UI wiring: operative select, HUD, character sheet, SYS menu, the deck terminal
+- `js/audio.js` — music beds (assets/music) + WebAudio synth SFX, mute persisted and fully inert
 - `assets/` — the complete art/music library from the original webapp (portraits, city banners, maps, endings, interiors, intro stills, vehicles, music beds)
 - `reference/webapp/` — the original webapp source, kept read-only as porting reference (notably `src/systems/matrix.js`, the netrun lattice that becomes the P4 intrusion minigame). Don't ship from here; port into `js/`.
 
