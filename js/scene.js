@@ -56,8 +56,20 @@ const ROOM = {
   ],
 };
 
+// Hybrid backdrop (the step past D5's pure code-drawn look): if a painted
+// isometric backdrop exists at `src`, it replaces the code-drawn architecture
+// and furniture; actors, light animation, captions and interactivity render
+// on top. `origin` is where the grid's (0,0) corner sits in image pixels;
+// `tileW` is one tile's width in image pixels — tune both against the real
+// image with dev/scene-preview.html?bg=...&calx=&caly=&caltw=.
+const BACKDROP = {
+  src: 'assets/interiors/safehouse.jpg',
+  origin: { x: 1024, y: 330 },
+  tileW: 118,
+};
+
 export class SafehouseScene {
-  constructor(canvas, { accent, initial, portrait, onCaption }) {
+  constructor(canvas, { accent, initial, portrait, onCaption, backdrop }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.accent = accent;
@@ -69,6 +81,17 @@ export class SafehouseScene {
       const img = new Image();
       img.onload = () => { this.portrait = img; };
       img.src = portrait;
+    }
+
+    // painted backdrop, if the asset exists — 404 falls back to code-drawn
+    this.backdropCal = backdrop || BACKDROP;
+    this.calibrate = !!backdrop?.calibrate;
+    this.backdrop = null;
+    {
+      const img = new Image();
+      img.onload = () => { this.backdrop = img; };
+      img.onerror = () => { this.backdrop = null; };
+      img.src = this.backdropCal.src;
     }
 
     this.player = { x: 5, y: 5 };  // grid position, fractional while walking
@@ -297,6 +320,52 @@ export class SafehouseScene {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.viewW, this.viewH);
 
+    // painted backdrop mode: the image is the room; code renders the living
+    // layers (light, ripple, actor, air, grain) and all interactivity on top
+    if (this.backdrop) {
+      const cal = this.backdropCal;
+      const s = this.tileW / cal.tileW;
+      ctx.drawImage(
+        this.backdrop,
+        this.originX - cal.origin.x * s, this.originY - cal.origin.y * s,
+        this.backdrop.width * s, this.backdrop.height * s,
+      );
+      // whisper of the walkable grid so taps have somewhere to land
+      ctx.save();
+      ctx.strokeStyle = PALETTE.teal;
+      ctx.globalAlpha = this.calibrate ? 0.5 : 0.045;
+      for (let x = 0; x <= ROOM.w; x++) {
+        const a = this.iso(x, 0), b = this.iso(x, ROOM.h);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+      for (let y = 0; y <= ROOM.h; y++) {
+        const a = this.iso(0, y), b = this.iso(ROOM.w, y);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+      if (this.calibrate) {
+        // object footprints, for lining the paint up with the stations
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = PALETTE.rose;
+        for (const obj of ROOM.objects) {
+          for (const [cx, cy] of obj.cells) {
+            this.tracePoly([
+              this.iso(cx, cy), this.iso(cx + 1, cy),
+              this.iso(cx + 1, cy + 1), this.iso(cx, cy + 1),
+            ]);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+
+      this.drawLightPools(t);
+      this.drawMarker();
+      this.drawPlayer(t);
+      this.drawMotes(t);
+      this.drawGrain(t);
+      return;
+    }
+
     // poured-slab floor: alternating 3x3 concrete panels under the grid
     ctx.save();
     for (let px = 0; px < ROOM.w / 3; px++) {
@@ -351,18 +420,7 @@ export class SafehouseScene {
     this.drawWallDetails(t);
     this.drawFloorDetails();
 
-    // click ripple
-    if (this.marker) {
-      const c = this.iso(this.marker.x + 0.5, this.marker.y + 0.5);
-      const p = this.marker.t / 0.8;
-      ctx.save();
-      ctx.strokeStyle = this.accent;
-      ctx.globalAlpha = (1 - p) * 0.8;
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y, this.tileW * 0.32 * p + 4, this.tileH * 0.32 * p + 2, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
+    this.drawMarker();
 
     // soft shadows under the furniture, then depth-sorted drawables
     this.drawObjectShadows();
@@ -1350,6 +1408,20 @@ export class SafehouseScene {
     ctx.globalAlpha = 0.5;
     ctx.beginPath();
     ctx.arc(c.x + lean, headY, r + 2.5, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawMarker() {
+    if (!this.marker) return;
+    const ctx = this.ctx;
+    const c = this.iso(this.marker.x + 0.5, this.marker.y + 0.5);
+    const p = this.marker.t / 0.8;
+    ctx.save();
+    ctx.strokeStyle = this.accent;
+    ctx.globalAlpha = (1 - p) * 0.8;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, this.tileW * 0.32 * p + 4, this.tileH * 0.32 * p + 2, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }

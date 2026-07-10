@@ -474,3 +474,63 @@ Player-character scenes beyond the intro (avatar-consistency risk — covered
 by keeping the hero hooded/absent), fixer portraits (all exist), vehicle art
 (all eight rides covered), ending art (16 exist), interiors (clinic/bar/garage
 covered), city banners (all 27 exist).
+
+---
+
+## 8. Isometric room backdrops — the hybrid RPG scenes
+
+A new asset class for the isometric RPG: one painted room per walkable scene,
+rendered as a true isometric diorama that the engine lays its grid, actors,
+lighting and animation over. Geometry discipline matters more here than in any
+cinematic still — the code has to line its walkable floor up with the paint.
+
+**File path:** `assets/interiors/safehouse.jpg` (the engine auto-detects it;
+calibration is tuned in `js/scene.js` afterwards). Landscape, 2048px+ wide.
+
+### 8.1 The safehouse *(first hybrid room)*
+
+> True isometric video-game room diorama, classic 2:1 isometric projection,
+> orthographic — no perspective convergence, no lens distortion. A single
+> rectangular room floating in near-black darkness, edges dissolving to black.
+> Camera from the room's south corner, elevated about 30 degrees: the floor is
+> a clean diamond, footprint proportions 12 wide by 9 deep, with two back walls
+> meeting at the top corner and the two near sides open to the void.
+>
+> The room: a burned operative's safehouse in the slums of a 2055 megacity.
+> Poured-concrete floor in large square panels, grimy, wet-sheened, with a worn
+> violet-grey rug in the middle, one corner kicked up. The RIGHT back wall
+> holds a broad rain-streaked window — cold blue-violet city towers and tiny
+> lit windows beyond the wet glass — and to the right of the window a wall-
+> mounted screen crawling with teal data, its light spilling onto the floor,
+> above a metal desk bearing two lit monitors, a keyboard, a cold mug. The LEFT
+> back wall holds cheap metal shelving cluttered with parts and bottles, a
+> paper district map taped up with a marked route and a red X, a broken
+> rose-red neon sign fragment still half-glowing, and a long coat hanging from
+> a peg. Against the right wall near the corner: a low metal cot with a thin
+> pillow and a violet blanket folded back, two empty bottles on the floor
+> beside it. Mid-left: a scarred metal workbench with a stowed crate beneath,
+> tools, a small hotplate with a steaming kettle, an oil stain bleeding out
+> from under it. Room center, on the rug's edge: a single standing floor lamp
+> with a cone shade, the one warm amber light in the room, dust hanging in its
+> beam. Far right edge: a heavy sliding door in its frame, rose-red keypad
+> armed beside it. Near the bottom-right: a stack of sealed shipping crates,
+> stencils sanded off, a black duffel slumped against them. Cables sag along
+> the tops of both walls; a floor cable runs from the desk up to the wall
+> screen; a drain grate and old scuff marks in the concrete.
+>
+> Leave the center of the floor open and walkable. NO people, NO characters,
+> NO readable text anywhere — signage and screens show abstract glyphs only.
+> Moody, restrained, never busy. Lit only by: the window's cold wash, the
+> monitors and wall screen's teal, the neon fragment's rose, the lamp's amber
+> pool. Wet reflections streaking toward the camera on the concrete.
+> Near-black palette `#04070d` with teal `#2dd4bf`, electric blue `#38bdf8`,
+> violet `#a78bfa`, rose-red `#f43f5e` accents, warm amber reserved for the
+> lamp only. Film grain, subtle scanlines, anamorphic bloom, in the style of
+> Syd Mead and classic neon-noir science-fiction art.
+
+*Engine notes (not part of the prompt): the walkable grid is 12×9 tiles; the
+cot occupies roughly tiles (1–3, 1–2) along the right wall, the desk (9–11,
+1–2), the bench (1–3, 6–7) on the left, the lamp at (6, 4) center, the door at
+the (11, 4) east edge, the crates at (10–12, 7–8). The closer the paint sits
+to those stations, the less calibration fudging later — but exact alignment is
+tuned in code, so favor a beautiful image over a precise one.*

@@ -14,11 +14,20 @@
 <canvas id="scene"></canvas>
 <script type="module">
   import { SafehouseScene } from '../js/scene.js';
+  // ?bg=path&calx=&caly=&caltw=&cal — test/calibrate a painted backdrop
+  const q = new URLSearchParams(location.search);
+  const bg = q.get('bg');
   window.__scene = new SafehouseScene(document.getElementById('scene'), {
     accent: '#38bdf8',
     initial: 'Z',
     portrait: '../assets/portraits/zen.png',
     onCaption: () => {},
+    backdrop: bg ? {
+      src: bg,
+      origin: { x: +(q.get('calx') ?? 1024), y: +(q.get('caly') ?? 330) },
+      tileW: +(q.get('caltw') ?? 118),
+      calibrate: q.has('cal'),
+    } : undefined,
   });
   // ?walk — start a walk shortly after load, for screenshotting the gait
   if (location.search.includes('walk')) {
