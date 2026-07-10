@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIQUID CHROME</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Operative select (first boot / new game) -->
+    <section id="select-screen" class="screen hidden">
+      <header class="title-block">
+        <h1>LIQUID CHROME</h1>
+        <p class="tagline">You were the best at what you did — and it got you burned.</p>
+      </header>
+      <div id="operative-cards" class="card-row"></div>
+      <p class="hint">Pick the one they burned. There's no wrong answer. There's no good one either.</p>
+    </section>
+
+    <!-- Main game view -->
+    <section id="game-screen" class="screen hidden">
+      <header id="hud">
+        <div class="hud-left">
+          <span id="hud-name" class="hud-name"></span>
+          <span id="hud-role" class="hud-role"></span>
+        </div>
+        <div class="hud-mid">
+          <div class="meter" title="Health">
+            <span class="meter-label">HEALTH</span>
+            <div class="meter-track"><div id="meter-health" class="meter-fill health"></div></div>
+          </div>
+          <div class="meter" title="Chrome reserve">
+            <span class="meter-label">CHROME</span>
+            <div class="meter-track"><div id="meter-chrome" class="meter-fill chrome"></div></div>
+          </div>
+          <div class="meter" title="Static drowning your Signal">
+            <span class="meter-label">STATIC</span>
+            <div class="meter-track"><div id="meter-static" class="meter-fill static"></div></div>
+          </div>
+        </div>
+        <div class="hud-right">
+          <span id="hud-credits" class="hud-credits"></span>
+          <button id="btn-sheet" class="hud-btn">SHEET</button>
+          <button id="btn-menu" class="hud-btn">SYS</button>
+        </div>
+      </header>
+
+      <div id="scene-wrap">
+        <canvas id="scene"></canvas>
+        <div id="scene-caption" class="hidden"></div>
+      </div>
+
+      <!-- Character sheet overlay -->
+      <aside id="sheet-panel" class="panel hidden">
+        <div class="panel-head">
+          <h2 id="sheet-name"></h2>
+          <button class="close-btn" data-close="sheet-panel">×</button>
+        </div>
+        <p id="sheet-bio" class="sheet-bio"></p>
+        <div class="sheet-grid">
+          <div>
+            <h3>Attributes</h3>
+            <ul id="sheet-attrs" class="stat-list"></ul>
+            <h3>Vitals</h3>
+            <ul id="sheet-vitals" class="stat-list"></ul>
+          </div>
+          <div>
+            <h3>Skills</h3>
+            <ul id="sheet-skills" class="stat-list small"></ul>
+          </div>
+        </div>
+        <h3>Chrome specials</h3>
+        <ul id="sheet-kit" class="kit-list"></ul>
+      </aside>
+
+      <!-- System menu overlay -->
+      <aside id="menu-panel" class="panel hidden">
+        <div class="panel-head">
+          <h2>SYS</h2>
+          <button class="close-btn" data-close="menu-panel">×</button>
+        </div>
+        <div class="menu-actions">
+          <button id="btn-save">SAVE</button>
+          <button id="btn-load">LOAD</button>
+          <button id="btn-wipe" class="danger">WIPE &amp; NEW</button>
+        </div>
+        <p id="menu-status" class="menu-status"></p>
+      </aside>
+    </section>
+
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
