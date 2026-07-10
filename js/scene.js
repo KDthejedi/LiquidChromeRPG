@@ -11,6 +11,12 @@ const PALETTE = {
   dim: '#64748b',
 };
 
+// hex color -> rgba() at the given alpha
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
 // Safehouse grid: 12 wide (x), 9 deep (y). Objects block their cells; clicking
 // one walks the player adjacent and surfaces its line.
 const ROOM = {
@@ -306,6 +312,19 @@ export class SafehouseScene {
     }
     ctx.restore();
 
+    // concrete grime: noise texture clipped to the slab
+    if (this.grain) {
+      ctx.save();
+      this.tracePoly([
+        this.iso(0, 0), this.iso(ROOM.w, 0), this.iso(ROOM.w, ROOM.h), this.iso(0, ROOM.h),
+      ]);
+      ctx.clip();
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = this.grain;
+      ctx.fillRect(0, 0, this.viewW, this.viewH);
+      ctx.restore();
+    }
+
     // light cast onto the floor by everything that glows
     this.drawLightPools(t);
 
@@ -377,6 +396,29 @@ export class SafehouseScene {
     const ctx = this.ctx;
     const wallH = this.wallH();
     ctx.save();
+
+    // solid wall surfaces: dark gradient panels so the room encloses
+    for (const [pt, span] of [[this.wallN.bind(this), ROOM.w], [this.wallW.bind(this), ROOM.h]]) {
+      const base0 = pt(0, 0), base1 = pt(span, 0);
+      const grad = ctx.createLinearGradient(base0.x, base0.y - wallH, base0.x, base0.y);
+      grad.addColorStop(0, hexA(PALETTE.blue, 0.015));
+      grad.addColorStop(1, hexA(PALETTE.blue, 0.07));
+      ctx.fillStyle = '#060a13';
+      ctx.globalAlpha = 0.82;
+      this.tracePoly([
+        { x: base0.x, y: base0.y - wallH }, { x: base1.x, y: base1.y - wallH },
+        { x: base1.x, y: base1.y }, { x: base0.x, y: base0.y },
+      ]);
+      ctx.fill();
+      ctx.fillStyle = grad;
+      ctx.globalAlpha = 1;
+      this.tracePoly([
+        { x: base0.x, y: base0.y - wallH }, { x: base1.x, y: base1.y - wallH },
+        { x: base1.x, y: base1.y }, { x: base0.x, y: base0.y },
+      ]);
+      ctx.fill();
+    }
+
     ctx.strokeStyle = PALETTE.blue;
     ctx.globalAlpha = 0.35;
     ctx.lineWidth = 1;
@@ -628,6 +670,7 @@ export class SafehouseScene {
     // --- neon sign fragment (W wall, 5.8..7.1) — salvage, still arguing ---
     const buzz = Math.sin(s * 40) * 0.08;
     const dropout = Math.sin(s * 1.9 + 1.3) > 0.94;
+    ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = PALETTE.rose;
     ctx.lineWidth = 1.5;
     ctx.shadowColor = PALETTE.rose;
@@ -642,6 +685,7 @@ export class SafehouseScene {
       this.tracePoly(stroke.map(([wy, f]) => this.wallW(wy, f)), false);
       ctx.stroke();
     }
+    ctx.globalCompositeOperation = 'source-over';
     ctx.restore();
 
     // --- conduit along both wall bases, junction boxes where it elbows ---
@@ -818,11 +862,36 @@ export class SafehouseScene {
       .map((p) => ({ x: p.x, y: p.y - d }));
   }
 
-  // wireframe slab between heights h0 and h1 over the footprint
-  drawSlab(x0, y0, x1, y1, h0, h1) {
+  // slab between heights h0 and h1 over the footprint. solid=true fills the
+  // three camera-facing faces (ink base + tinted shading) so the object
+  // occludes what's behind it — surfaces, not line cages.
+  drawSlab(x0, y0, x1, y1, h0, h1, solid = false, tint = null) {
     const ctx = this.ctx;
     const bot = this.liftedQuad(x0, y0, x1, y1, h0);
     const top = this.liftedQuad(x0, y0, x1, y1, h1);
+    if (solid) {
+      const color = tint || ctx.strokeStyle;
+      const alphaWas = ctx.globalAlpha;
+      // corners: 0 NW, 1 NE, 2 SE, 3 SW. Camera sees the S (3-2) and E (1-2)
+      // sides plus the top.
+      const south = [bot[3], bot[2], top[2], top[3]];
+      const east = [bot[1], bot[2], top[2], top[1]];
+      for (const [face, shade] of [[south, 0.07], [east, 0.04]]) {
+        ctx.globalAlpha = 0.88;
+        ctx.fillStyle = PALETTE.ink;
+        this.tracePoly(face); ctx.fill();
+        ctx.globalAlpha = shade;
+        ctx.fillStyle = color;
+        this.tracePoly(face); ctx.fill();
+      }
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = PALETTE.ink;
+      this.tracePoly(top); ctx.fill();
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = color;
+      this.tracePoly(top); ctx.fill();
+      ctx.globalAlpha = alphaWas;
+    }
     this.tracePoly(bot); ctx.stroke();
     this.tracePoly(top); ctx.stroke();
     for (let i = 0; i < 4; i++) {
@@ -871,7 +940,7 @@ export class SafehouseScene {
     const ctx = this.ctx;
     ctx.strokeStyle = PALETTE.dim;
     this.drawLegs(1, 1, 3, 2, 0.18);
-    this.drawSlab(1, 1, 3, 2, 0.18, 0.3);
+    this.drawSlab(1, 1, 3, 2, 0.18, 0.3, true);
     // pillow at the head end
     ctx.strokeStyle = PALETTE.dim;
     ctx.globalAlpha = 0.6;
@@ -891,7 +960,7 @@ export class SafehouseScene {
     // desk slab + legs
     ctx.strokeStyle = PALETTE.dim;
     this.drawLegs(9, 1, 11, 2, 0.42);
-    this.drawSlab(9, 1, 11, 2, 0.42, 0.5);
+    this.drawSlab(9, 1, 11, 2, 0.42, 0.5, true, PALETTE.blue);
     // two monitors standing on the back edge, screens lit
     const flick = 0.06 + 0.025 * Math.sin(t / 320) + (Math.sin(t / 1370) > 0.97 ? -0.06 : 0);
     ctx.strokeStyle = PALETTE.blue;
@@ -902,10 +971,12 @@ export class SafehouseScene {
       ctx.globalAlpha = 0.8;
       this.tracePoly(quad);
       ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = PALETTE.teal;
       ctx.globalAlpha = Math.max(0, flick);
       this.tracePoly(quad);
       ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
     }
     // keyboard on the front of the desktop
     ctx.strokeStyle = PALETTE.dim;
@@ -927,17 +998,17 @@ export class SafehouseScene {
     const ctx = this.ctx;
     ctx.strokeStyle = PALETTE.violet;
     this.drawLegs(1, 6, 3, 7, 0.38);
-    this.drawSlab(1, 6, 3, 7, 0.38, 0.46);
+    this.drawSlab(1, 6, 3, 7, 0.38, 0.46, true);
     // under-shelf with a stowed box
     ctx.globalAlpha = 0.5;
     this.tracePoly(this.liftedQuad(1.1, 6.1, 2.9, 6.9, 0.16));
     ctx.stroke();
     ctx.strokeStyle = PALETTE.dim;
-    this.drawSlab(1.25, 6.2, 1.95, 6.8, 0, 0.15);
+    this.drawSlab(1.25, 6.2, 1.95, 6.8, 0, 0.15, true);
     // clutter on top: parts boxes, a standing tool
     ctx.globalAlpha = 0.7;
-    this.drawSlab(1.15, 6.15, 1.55, 6.55, 0.46, 0.6);
-    this.drawSlab(2.45, 6.25, 2.85, 6.8, 0.46, 0.56);
+    this.drawSlab(1.15, 6.15, 1.55, 6.55, 0.46, 0.6, true);
+    this.drawSlab(2.45, 6.25, 2.85, 6.8, 0.46, 0.56, true);
     const toolBase = this.iso(2.1, 6.4);
     ctx.beginPath();
     ctx.moveTo(toolBase.x, toolBase.y - this.u(0.46));
@@ -994,12 +1065,22 @@ export class SafehouseScene {
     ctx.moveTo(base.x - this.tileW * 0.2, shadeY); ctx.lineTo(base.x, base.y - this.u(0.92));
     ctx.moveTo(base.x + this.tileW * 0.2, shadeY); ctx.lineTo(base.x, base.y - this.u(0.92));
     ctx.stroke();
-    // the bulb — actually lit
+    // the bulb — actually lit, blooming
+    ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = PALETTE.amber;
     ctx.globalAlpha = 0.75 + 0.1 * Math.sin(t / 300);
     ctx.beginPath();
     ctx.arc(base.x, shadeY + 4, 2.5, 0, Math.PI * 2);
     ctx.fill();
+    const halo = ctx.createRadialGradient(base.x, shadeY + 4, 1, base.x, shadeY + 4, 14);
+    halo.addColorStop(0, hexA(PALETTE.amber, 0.22));
+    halo.addColorStop(1, hexA(PALETTE.amber, 0));
+    ctx.fillStyle = halo;
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(base.x, shadeY + 4, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   drawDoor(t) {
@@ -1012,14 +1093,21 @@ export class SafehouseScene {
     ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p0.x, p0.y - H); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p1.x, p1.y - H); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(p0.x, p0.y - H); ctx.lineTo(p1.x, p1.y - H); ctx.stroke();
-    // the slab itself, inset, with panel seams
+    // the slab itself, inset, with panel seams — solid, it's a door
     const q0 = this.iso(12, 4.08), q1 = this.iso(12, 4.92);
     const hS = this.u(1.06);
-    ctx.globalAlpha = 0.55;
-    this.tracePoly([
+    const slabQuad = [
       { x: q0.x, y: q0.y }, { x: q1.x, y: q1.y },
       { x: q1.x, y: q1.y - hS }, { x: q0.x, y: q0.y - hS },
-    ]);
+    ];
+    ctx.fillStyle = PALETTE.ink;
+    ctx.globalAlpha = 0.85;
+    this.tracePoly(slabQuad); ctx.fill();
+    ctx.fillStyle = PALETTE.rose;
+    ctx.globalAlpha = 0.06;
+    this.tracePoly(slabQuad); ctx.fill();
+    ctx.globalAlpha = 0.55;
+    this.tracePoly(slabQuad);
     ctx.stroke();
     for (const f of [0.35, 0.7]) {
       ctx.beginPath();
@@ -1058,7 +1146,7 @@ export class SafehouseScene {
     ctx.strokeStyle = PALETTE.teal;
     ctx.globalAlpha = 0.75;
     // big crate with an X brace on the camera-facing side
-    this.drawSlab(10.05, 7.05, 10.95, 7.95, 0, 0.55);
+    this.drawSlab(10.05, 7.05, 10.95, 7.95, 0, 0.55, true);
     const f0 = this.iso(10.05, 7.95), f1 = this.iso(10.95, 7.95);
     const d = this.u(0.55);
     ctx.globalAlpha = 0.45;
@@ -1068,9 +1156,9 @@ export class SafehouseScene {
     ctx.stroke();
     // smaller one stacked on top, nudged
     ctx.globalAlpha = 0.75;
-    this.drawSlab(10.2, 7.15, 10.8, 7.75, 0.55, 0.95);
+    this.drawSlab(10.2, 7.15, 10.8, 7.75, 0.55, 0.95, true);
     // third crate beside, strapped
-    this.drawSlab(11.05, 7.1, 11.9, 7.9, 0, 0.5);
+    this.drawSlab(11.05, 7.1, 11.9, 7.9, 0, 0.5, true);
     ctx.globalAlpha = 0.4;
     this.tracePoly(this.liftedQuad(11.42, 7.1, 11.52, 7.9, 0.5), false);
     ctx.stroke();
@@ -1103,6 +1191,11 @@ export class SafehouseScene {
       ctx.ellipse(p.x, p.y, 2 + life * 6, 1 + life * 2.5, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
+
+    // wet-floor reflection of the figure's glow, smeared toward camera
+    ctx.globalCompositeOperation = 'lighter';
+    this.streak(c.x, c.y + 2, r * 1.6, this.tileH * 2.2, this.accent, 0.07);
+    ctx.globalCompositeOperation = 'source-over';
 
     // ground shadow
     ctx.fillStyle = this.accent;
@@ -1261,10 +1354,36 @@ export class SafehouseScene {
     ctx.restore();
   }
 
+  // a wet-floor reflection streak: light smeared toward the camera
+  streak(x, y, w, len, hex, alpha) {
+    const ctx = this.ctx;
+    const g = ctx.createLinearGradient(x, y, x, y + len);
+    g.addColorStop(0, hexA(hex, alpha));
+    g.addColorStop(1, hexA(hex, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(x - w / 2, y, w, len);
+  }
+
   // pools of light on the floor from every source that glows
   drawLightPools(t) {
     const ctx = this.ctx;
     ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // wet-floor streaks under everything lit: the window panes, the wall
+    // screen, the neon sign, the lamp, the door keypad
+    for (let i = 0; i < 5; i++) {
+      const p = this.iso(4.4 + i * 0.75, 0.05);
+      this.streak(p.x, p.y, 5 + (i % 2) * 3, this.tileH * (2.2 + (i % 3) * 0.8), PALETTE.blue, 0.05);
+    }
+    const scr = this.iso(9.7, 0.05);
+    this.streak(scr.x, scr.y, this.tileW * 0.5, this.tileH * 2.4, PALETTE.teal, 0.045);
+    const neon = this.iso(0.05, 6.45);
+    this.streak(neon.x, neon.y, this.tileW * 0.4, this.tileH * 1.8, PALETTE.rose, 0.05);
+    const lampP = this.iso(6.5, 4.55);
+    this.streak(lampP.x, lampP.y, this.tileW * 0.3, this.tileH * 1.6, PALETTE.amber, 0.06);
+    const doorP = this.iso(11.6, 4.5);
+    this.streak(doorP.x, doorP.y, this.tileW * 0.35, this.tileH * 1.4, PALETTE.rose, 0.035);
 
     // cold wash falling in from the window, stretched across the floor
     const w0 = this.iso(6, 0), w1 = this.iso(7.6, 2.8);
