@@ -143,6 +143,14 @@ html, body {
 #scene-wrap { position: relative; flex: 1; min-height: 0; }
 #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
 
+#scene-caption .caption-hint {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-style: italic;
+}
+
 #scene-caption {
   position: absolute;
   left: 50%; bottom: 1.4rem;

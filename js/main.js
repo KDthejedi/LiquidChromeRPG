@@ -57,13 +57,22 @@ function startGame() {
     onCaption: setCaption,
   });
   window.__scene = scene;
-  setCaption('Home. Neon over black water, the clinic that rebuilt you strung underneath it. Tap the floor to move; tap what’s yours to look it over.');
+  setCaption(
+    'Home. Well — the corner of the slums you currently call home. Rain and neon blur the silhouettes drifting past your window, the deep end going about its business without you. Then your console beeps. It never beeps.',
+    'Tap the floor to move. Tap what’s yours to look it over.',
+  );
 }
 
-function setCaption(text) {
+function setCaption(text, hint) {
   const el = $('scene-caption');
   if (!text) { el.classList.add('hidden'); return; }
   el.textContent = text;
+  if (hint) {
+    const h = document.createElement('span');
+    h.className = 'caption-hint';
+    h.textContent = hint;
+    el.appendChild(h);
+  }
   el.classList.remove('hidden');
 }
 
