@@ -20,6 +20,13 @@
     portrait: '../assets/portraits/zen.png',
     onCaption: () => {},
   });
+  // ?walk — start a walk shortly after load, for screenshotting the gait
+  if (location.search.includes('walk')) {
+    setTimeout(() => {
+      const s = window.__scene;
+      s.path = s.findPath({ x: 5, y: 5 }, { x: 9, y: 6 }) || [];
+    }, 500);
+  }
 </script>
 </body>
 </html>

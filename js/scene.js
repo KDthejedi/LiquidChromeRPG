@@ -42,6 +42,11 @@ const ROOM = {
       cells: [[11, 4]], color: PALETTE.rose, height: 1.0,
       text: 'The deep end’s three blocks that way, and past it, the old market. Nothing out there tonight is worth the walk. That changes soon.',
     },
+    {
+      id: 'crates', label: 'the crates',
+      cells: [[10, 7], [11, 7]], color: PALETTE.teal, height: 0.55,
+      text: 'Sealed crates, consortium stencils sanded off. Kiros’s people left them. You haven’t asked what’s inside. They haven’t said.',
+    },
   ],
 };
 
@@ -64,6 +69,8 @@ export class SafehouseScene {
     this.path = [];                // remaining cells to walk
     this.pendingObject = null;     // object to read once we arrive
     this.marker = null;            // {x, y, t} click ripple
+    this.facing = 1;               // screen-space: 1 faces right, -1 faces left
+    this.walkT = 0;                // distance walked, drives the leg cycle
 
     this.blocked = new Set();
     for (const obj of ROOM.objects) {
@@ -226,6 +233,9 @@ export class SafehouseScene {
       const dy = next.y - this.player.y;
       const dist = Math.hypot(dx, dy);
       const step = speed * dt;
+      const screenDx = dx - dy; // iso: +x goes right, +y goes left
+      if (Math.abs(screenDx) > 0.01) this.facing = Math.sign(screenDx);
+      this.walkT += step;
       if (dist <= step) {
         this.player.x = next.x;
         this.player.y = next.y;
@@ -253,18 +263,34 @@ export class SafehouseScene {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.viewW, this.viewH);
 
-    // floor grid
+    // poured-slab floor: alternating 3x3 concrete panels under the grid
+    ctx.save();
+    for (let px = 0; px < ROOM.w / 3; px++) {
+      for (let py = 0; py < ROOM.h / 3; py++) {
+        ctx.fillStyle = PALETTE.teal;
+        ctx.globalAlpha = 0.015 + ((px + py) % 2) * 0.022;
+        this.tracePoly([
+          this.iso(px * 3, py * 3), this.iso(px * 3 + 3, py * 3),
+          this.iso(px * 3 + 3, py * 3 + 3), this.iso(px * 3, py * 3 + 3),
+        ]);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // floor grid, with brighter seams on the panel joints
     ctx.save();
     ctx.strokeStyle = PALETTE.teal;
-    ctx.globalAlpha = 0.28;
     ctx.lineWidth = 1;
     ctx.shadowColor = PALETTE.teal;
     ctx.shadowBlur = 6;
     for (let x = 0; x <= ROOM.w; x++) {
+      ctx.globalAlpha = x % 3 === 0 ? 0.4 : 0.2;
       const a = this.iso(x, 0), b = this.iso(x, ROOM.h);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     for (let y = 0; y <= ROOM.h; y++) {
+      ctx.globalAlpha = y % 3 === 0 ? 0.4 : 0.2;
       const a = this.iso(0, y), b = this.iso(ROOM.w, y);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
@@ -532,6 +558,53 @@ export class SafehouseScene {
     ], false);
     ctx.stroke();
 
+    // a worn rug under the middle of the room, corner kicked up
+    ctx.strokeStyle = PALETTE.violet;
+    ctx.globalAlpha = 0.45;
+    this.tracePoly([this.iso(4.2, 4.4), this.iso(8.8, 4.4), this.iso(8.8, 6.6), this.iso(4.2, 6.6)]);
+    ctx.stroke();
+    ctx.globalAlpha = 0.15;
+    this.tracePoly([this.iso(4.5, 4.7), this.iso(8.5, 4.7), this.iso(8.5, 6.3), this.iso(4.5, 6.3)]);
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.violet;
+    ctx.globalAlpha = 0.04;
+    this.tracePoly([this.iso(4.2, 4.4), this.iso(8.8, 4.4), this.iso(8.8, 6.6), this.iso(4.2, 6.6)]);
+    ctx.fill();
+    // kicked-up corner fold
+    ctx.globalAlpha = 0.3;
+    const foldA = this.iso(8.8, 6.6), foldB = this.iso(8.35, 6.6), foldC = this.iso(8.8, 6.15);
+    ctx.strokeStyle = PALETTE.violet;
+    ctx.beginPath();
+    ctx.moveTo(foldB.x, foldB.y); ctx.lineTo(foldA.x, foldA.y - this.tileH * 0.22); ctx.lineTo(foldC.x, foldC.y);
+    ctx.stroke();
+
+    // oil stain bleeding out from under the workbench
+    const stain = this.iso(2.7, 5.35);
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.ellipse(stain.x, stain.y, this.tileW * 0.34, this.tileH * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.14;
+    ctx.beginPath();
+    ctx.ellipse(stain.x, stain.y, this.tileW * 0.34, this.tileH * 0.3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // power cable from the bench to the wall conduit
+    ctx.strokeStyle = PALETTE.blue;
+    ctx.globalAlpha = 0.28;
+    this.tracePoly([this.iso(1.4, 6.05), this.iso(0.7, 5.7), this.iso(0.12, 5.55), this.wallW(5.5, 0.06)], false);
+    ctx.stroke();
+
+    // threshold plates in front of the door
+    ctx.strokeStyle = PALETTE.rose;
+    ctx.globalAlpha = 0.3;
+    for (const off of [0, 0.12]) {
+      const a = this.iso(10.8 + off, 4.05), b = this.iso(10.8 + off, 4.95);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+
     // scuffed floor where the pacing happens
     ctx.strokeStyle = PALETTE.dim;
     ctx.globalAlpha = 0.12;
@@ -561,57 +634,301 @@ export class SafehouseScene {
     ctx.restore();
   }
 
+  // height unit: 1.0 == the old full-box height
+  u(h) { return this.tileH * 2.2 * h; }
+
+  liftedQuad(x0, y0, x1, y1, h) {
+    const d = this.u(h);
+    return [this.iso(x0, y0), this.iso(x1, y0), this.iso(x1, y1), this.iso(x0, y1)]
+      .map((p) => ({ x: p.x, y: p.y - d }));
+  }
+
+  // wireframe slab between heights h0 and h1 over the footprint
+  drawSlab(x0, y0, x1, y1, h0, h1) {
+    const ctx = this.ctx;
+    const bot = this.liftedQuad(x0, y0, x1, y1, h0);
+    const top = this.liftedQuad(x0, y0, x1, y1, h1);
+    this.tracePoly(bot); ctx.stroke();
+    this.tracePoly(top); ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath(); ctx.moveTo(bot[i].x, bot[i].y); ctx.lineTo(top[i].x, top[i].y); ctx.stroke();
+    }
+  }
+
+  // four corner legs from the floor up to height h, inset from the footprint
+  drawLegs(x0, y0, x1, y1, h, inset = 0.12) {
+    const ctx = this.ctx;
+    const d = this.u(h);
+    for (const [lx, ly] of [
+      [x0 + inset, y0 + inset], [x1 - inset, y0 + inset],
+      [x1 - inset, y1 - inset], [x0 + inset, y1 - inset],
+    ]) {
+      const p = this.iso(lx, ly);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - d); ctx.stroke();
+    }
+  }
+
   drawObject(obj, t) {
     const ctx = this.ctx;
-    const h = this.tileH * 2.2 * obj.height;
     ctx.save();
     ctx.strokeStyle = obj.color;
     ctx.globalAlpha = 0.85;
     ctx.lineWidth = 1.2;
     ctx.shadowColor = obj.color;
-    ctx.shadowBlur = obj.id === 'lamp' ? 16 + Math.sin(t / 300) * 3 : 10;
-
-    // wireframe box over the object's cell span
-    const xs = obj.cells.map(([x]) => x), ys = obj.cells.map(([, y]) => y);
-    const x0 = Math.min(...xs), x1 = Math.max(...xs) + 1;
-    const y0 = Math.min(...ys), y1 = Math.max(...ys) + 1;
-    const base = [this.iso(x0, y0), this.iso(x1, y0), this.iso(x1, y1), this.iso(x0, y1)];
-
-    ctx.beginPath();
-    base.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-    ctx.closePath();
-    ctx.stroke();
-
-    ctx.beginPath();
-    base.forEach((p, i) => {
-      const q = { x: p.x, y: p.y - h };
-      if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y);
-    });
-    ctx.closePath();
-    ctx.stroke();
-
-    for (const p of base) {
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - h); ctx.stroke();
+    ctx.shadowBlur = 10;
+    switch (obj.id) {
+      case 'cot': this.drawCot(); break;
+      case 'deck': this.drawDeck(t); break;
+      case 'bench': this.drawBench(); break;
+      case 'lamp': this.drawLamp(t); break;
+      case 'door': this.drawDoor(t); break;
+      case 'crates': this.drawCrates(); break;
+      default: this.drawSlab(
+        Math.min(...obj.cells.map(([x]) => x)), Math.min(...obj.cells.map(([, y]) => y)),
+        Math.max(...obj.cells.map(([x]) => x)) + 1, Math.max(...obj.cells.map(([, y]) => y)) + 1,
+        0, obj.height,
+      );
     }
     ctx.restore();
+  }
+
+  drawCot() {
+    const ctx = this.ctx;
+    ctx.strokeStyle = PALETTE.dim;
+    this.drawLegs(1, 1, 3, 2, 0.18);
+    this.drawSlab(1, 1, 3, 2, 0.18, 0.3);
+    // pillow at the head end
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.6;
+    this.tracePoly(this.liftedQuad(1.1, 1.15, 1.55, 1.85, 0.36));
+    ctx.stroke();
+    // blanket, violet, folded back — the one soft thing in the room
+    ctx.strokeStyle = PALETTE.violet;
+    ctx.globalAlpha = 0.55;
+    this.tracePoly(this.liftedQuad(1.85, 1.02, 2.95, 1.98, 0.33));
+    ctx.stroke();
+    const fa = this.liftedQuad(1.85, 1.02, 1.85, 1.98, 0.33);
+    ctx.beginPath(); ctx.moveTo(fa[0].x, fa[0].y + 3); ctx.lineTo(fa[2].x, fa[2].y + 3); ctx.stroke();
+  }
+
+  drawDeck(t) {
+    const ctx = this.ctx;
+    // desk slab + legs
+    ctx.strokeStyle = PALETTE.dim;
+    this.drawLegs(9, 1, 11, 2, 0.42);
+    this.drawSlab(9, 1, 11, 2, 0.42, 0.5);
+    // two monitors standing on the back edge, screens lit
+    const flick = 0.06 + 0.025 * Math.sin(t / 320) + (Math.sin(t / 1370) > 0.97 ? -0.06 : 0);
+    ctx.strokeStyle = PALETTE.blue;
+    for (const [mx0, mx1, hTop] of [[9.15, 9.8, 0.95], [9.95, 10.7, 1.02]]) {
+      const b0 = this.liftedQuad(mx0, 1.2, mx1, 1.2, 0.52);
+      const t0 = this.liftedQuad(mx0, 1.2, mx1, 1.2, hTop);
+      const quad = [b0[0], b0[1], t0[1], t0[0]];
+      ctx.globalAlpha = 0.8;
+      this.tracePoly(quad);
+      ctx.stroke();
+      ctx.fillStyle = PALETTE.teal;
+      ctx.globalAlpha = Math.max(0, flick);
+      this.tracePoly(quad);
+      ctx.fill();
+    }
+    // keyboard on the front of the desktop
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.6;
+    this.tracePoly(this.liftedQuad(9.35, 1.55, 10.35, 1.85, 0.52));
+    ctx.stroke();
+  }
+
+  drawBench() {
+    const ctx = this.ctx;
+    ctx.strokeStyle = PALETTE.violet;
+    this.drawLegs(1, 6, 3, 7, 0.38);
+    this.drawSlab(1, 6, 3, 7, 0.38, 0.46);
+    // under-shelf with a stowed box
+    ctx.globalAlpha = 0.5;
+    this.tracePoly(this.liftedQuad(1.1, 6.1, 2.9, 6.9, 0.16));
+    ctx.stroke();
+    ctx.strokeStyle = PALETTE.dim;
+    this.drawSlab(1.25, 6.2, 1.95, 6.8, 0, 0.15);
+    // clutter on top: parts boxes, a standing tool
+    ctx.globalAlpha = 0.7;
+    this.drawSlab(1.15, 6.15, 1.55, 6.55, 0.46, 0.6);
+    this.drawSlab(2.45, 6.25, 2.85, 6.8, 0.46, 0.56);
+    const toolBase = this.iso(2.1, 6.4);
+    ctx.beginPath();
+    ctx.moveTo(toolBase.x, toolBase.y - this.u(0.46));
+    ctx.lineTo(toolBase.x, toolBase.y - this.u(0.72));
+    ctx.stroke();
+    ctx.strokeRect(toolBase.x - 4, toolBase.y - this.u(0.78), 8, 4);
+  }
+
+  drawLamp(t) {
+    const ctx = this.ctx;
+    const base = this.iso(6.5, 4.5);
+    const flicker = Math.sin(t / 300) * 3;
+    ctx.strokeStyle = PALETTE.amber;
+    ctx.shadowColor = PALETTE.amber;
+    ctx.shadowBlur = 14 + flicker;
+    // weighted base + pole
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.ellipse(base.x, base.y, this.tileW * 0.12, this.tileH * 0.12, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(base.x, base.y); ctx.lineTo(base.x, base.y - this.u(0.92));
+    ctx.stroke();
+    // cone shade
+    const shadeY = base.y - this.u(0.68);
+    ctx.beginPath();
+    ctx.ellipse(base.x, shadeY, this.tileW * 0.2, this.tileH * 0.2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(base.x - this.tileW * 0.2, shadeY); ctx.lineTo(base.x, base.y - this.u(0.92));
+    ctx.moveTo(base.x + this.tileW * 0.2, shadeY); ctx.lineTo(base.x, base.y - this.u(0.92));
+    ctx.stroke();
+    // the bulb — actually lit
+    ctx.fillStyle = PALETTE.amber;
+    ctx.globalAlpha = 0.75 + 0.1 * Math.sin(t / 300);
+    ctx.beginPath();
+    ctx.arc(base.x, shadeY + 4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawDoor(t) {
+    const ctx = this.ctx;
+    ctx.strokeStyle = PALETTE.rose;
+    // frame posts and lintel on the east edge of the cell
+    const p0 = this.iso(12, 4), p1 = this.iso(12, 5);
+    const H = this.u(1.15);
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p0.x, p0.y - H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p1.x, p1.y - H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y - H); ctx.lineTo(p1.x, p1.y - H); ctx.stroke();
+    // the slab itself, inset, with panel seams
+    const q0 = this.iso(12, 4.08), q1 = this.iso(12, 4.92);
+    const hS = this.u(1.06);
+    ctx.globalAlpha = 0.55;
+    this.tracePoly([
+      { x: q0.x, y: q0.y }, { x: q1.x, y: q1.y },
+      { x: q1.x, y: q1.y - hS }, { x: q0.x, y: q0.y - hS },
+    ]);
+    ctx.stroke();
+    for (const f of [0.35, 0.7]) {
+      ctx.beginPath();
+      ctx.moveTo(q0.x, q0.y - hS * f); ctx.lineTo(q1.x, q1.y - hS * f);
+      ctx.stroke();
+    }
+    // keypad, armed and patient
+    const pip = Math.sin(t / 900) > 0 ? 0.9 : 0.35;
+    const k = this.iso(12, 3.88);
+    ctx.fillStyle = PALETTE.rose;
+    ctx.globalAlpha = pip;
+    ctx.fillRect(k.x - 1.5, k.y - this.u(0.55), 3, 3);
+    ctx.globalAlpha = 0.4;
+    ctx.strokeRect(k.x - 4, k.y - this.u(0.58), 8, 9);
+  }
+
+  drawCrates() {
+    const ctx = this.ctx;
+    ctx.strokeStyle = PALETTE.teal;
+    ctx.globalAlpha = 0.75;
+    // big crate with an X brace on the camera-facing side
+    this.drawSlab(10.05, 7.05, 10.95, 7.95, 0, 0.55);
+    const f0 = this.iso(10.05, 7.95), f1 = this.iso(10.95, 7.95);
+    const d = this.u(0.55);
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.moveTo(f0.x, f0.y); ctx.lineTo(f1.x, f1.y - d);
+    ctx.moveTo(f0.x, f0.y - d); ctx.lineTo(f1.x, f1.y);
+    ctx.stroke();
+    // smaller one stacked on top, nudged
+    ctx.globalAlpha = 0.75;
+    this.drawSlab(10.2, 7.15, 10.8, 7.75, 0.55, 0.95);
+    // third crate beside, strapped
+    this.drawSlab(11.05, 7.1, 11.9, 7.9, 0, 0.5);
+    ctx.globalAlpha = 0.4;
+    this.tracePoly(this.liftedQuad(11.42, 7.1, 11.52, 7.9, 0.5), false);
+    ctx.stroke();
   }
 
   drawPlayer(t) {
     const ctx = this.ctx;
     const c = this.iso(this.player.x + 0.5, this.player.y + 0.5);
-    const r = Math.max(this.tileH * 0.62, 12);
-    const bob = Math.sin(t / 450) * 2;
-    const cy = c.y - r - 6 + bob;
+    const walking = this.path.length > 0;
+    const H = this.tileH * 2.35;                     // figure height, floor to crown
+    const r = Math.max(this.tileH * 0.46, 9);        // head-chip radius
+    const bob = walking ? Math.sin(this.walkT * 9) * 1.6 : Math.sin(t / 900) * 1.2;
+    const lean = walking ? this.facing * H * 0.045 : 0;
+    const legPhase = Math.sin(this.walkT * 9);
+
+    const hemY = c.y - H * 0.16 + bob * 0.3;
+    const beltY = c.y - H * 0.45 + bob * 0.6;
+    const shoulderY = c.y - H * 0.68 + bob;
+    const headY = c.y - H * 0.68 - r - 2 + bob;
+    const shW = r * 0.95;                            // half shoulder width
+    const hemW = r * 1.3;                            // half coat hem width — coats flare down
 
     ctx.save();
-    // ground shadow ellipse
+    // ground shadow
     ctx.fillStyle = this.accent;
     ctx.globalAlpha = 0.18;
     ctx.beginPath();
-    ctx.ellipse(c.x, c.y, r * 0.8, r * 0.34, 0, 0, Math.PI * 2);
+    ctx.ellipse(c.x, c.y, r * 1.1, r * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // portrait-chip with glow ring (initial as fallback while loading)
+    // lower legs below the coat hem — scissor while walking, settle when still
+    ctx.strokeStyle = this.accent;
+    ctx.lineWidth = 1.6;
+    ctx.globalAlpha = 0.75;
+    const stride = walking ? legPhase * r * 0.55 : r * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(c.x - r * 0.3 + lean * 0.3, hemY);
+    ctx.lineTo(c.x - r * 0.3 - stride, c.y);
+    ctx.moveTo(c.x + r * 0.3 + lean * 0.3, hemY);
+    ctx.lineTo(c.x + r * 0.3 + (walking ? -stride : 0), c.y - (walking ? Math.abs(legPhase) * 1.5 : 0));
+    ctx.stroke();
+
+    // the coat — hooded silhouette, ink-filled, accent rim, flaring to the hem
+    const coat = [
+      { x: c.x - shW + lean, y: shoulderY },
+      { x: c.x + shW + lean, y: shoulderY },
+      { x: c.x + hemW + lean * 0.3, y: hemY },
+      { x: c.x - hemW + lean * 0.3, y: hemY },
+    ];
+    ctx.fillStyle = PALETTE.ink;
+    ctx.globalAlpha = 0.92;
+    this.tracePoly(coat);
+    ctx.fill();
+    ctx.strokeStyle = this.accent;
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = 1.3;
+    ctx.shadowColor = this.accent;
+    ctx.shadowBlur = 8;
+    this.tracePoly(coat);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // coat seam + belt
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.moveTo(c.x + lean, shoulderY + 2);
+    ctx.lineTo(c.x + lean * 0.3, hemY - 1);
+    ctx.stroke();
+    const beltW = shW + (hemW - shW) * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(c.x - beltW + lean * 0.6, beltY);
+    ctx.lineTo(c.x + beltW + lean * 0.6, beltY);
+    ctx.stroke();
+    // arms — a swing against the legs when walking
+    const swing = walking ? legPhase * r * 0.4 : 0;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(c.x - shW * 0.95 + lean, shoulderY + 3);
+    ctx.lineTo(c.x - beltW * 0.95 + swing + lean * 0.5, beltY + 3);
+    ctx.moveTo(c.x + shW * 0.95 + lean, shoulderY + 3);
+    ctx.lineTo(c.x + beltW * 0.95 - swing + lean * 0.5, beltY + 3);
+    ctx.stroke();
+
+    // head: portrait-chip with glow ring (initial as fallback while loading)
     ctx.globalAlpha = 1;
     ctx.fillStyle = PALETTE.ink;
     ctx.strokeStyle = this.accent;
@@ -619,25 +936,30 @@ export class SafehouseScene {
     ctx.shadowColor = this.accent;
     ctx.shadowBlur = 14;
     ctx.beginPath();
-    ctx.arc(c.x, cy, r, 0, Math.PI * 2);
+    ctx.arc(c.x + lean, headY, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-
     ctx.shadowBlur = 0;
     if (this.portrait) {
       ctx.save();
       ctx.beginPath();
-      ctx.arc(c.x, cy, r - 1, 0, Math.PI * 2);
+      ctx.arc(c.x + lean, headY, r - 1, 0, Math.PI * 2);
       ctx.clip();
-      ctx.drawImage(this.portrait, c.x - r, cy - r, r * 2, r * 2);
+      ctx.drawImage(this.portrait, c.x + lean - r, headY - r, r * 2, r * 2);
       ctx.restore();
     } else {
       ctx.fillStyle = this.accent;
       ctx.font = `${Math.round(r)}px "SF Mono", Menlo, Consolas, monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(this.initial, c.x, cy + 1);
+      ctx.fillText(this.initial, c.x + lean, headY + 1);
     }
+    // hood line over the chip
+    ctx.strokeStyle = this.accent;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.arc(c.x + lean, headY, r + 2.5, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.stroke();
     ctx.restore();
   }
 
