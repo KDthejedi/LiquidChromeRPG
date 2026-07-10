@@ -64,8 +64,39 @@ const ROOM = {
 // image with dev/scene-preview.html?bg=...&calx=&caly=&caltw=.
 const BACKDROP = {
   src: 'assets/interiors/safehouse.jpg',
-  origin: { x: 1024, y: 330 },
-  tileW: 118,
+  origin: { x: 1048, y: 352 },
+  tileW: 146,
+  // the painted room has its own geometry and furniture stations; this
+  // layout re-shapes the walkable grid, remaps object footprints to the
+  // paint, and re-voices captions where the paint shows different furniture.
+  layout: {
+    w: 10, h: 10,
+    start: { x: 4, y: 6 },
+    cells: {
+      deck: [[0, 3], [0, 4], [0, 5], [1, 3], [1, 4], [1, 5]],
+      bench: [[1, 1], [2, 1], [1, 2], [2, 2]],
+      crates: [[5, 2], [6, 2]],
+      cot: [[7, 2], [8, 2], [9, 2], [7, 3], [8, 3], [9, 3]],
+      lamp: [[6, 1]],
+      door: [[9, 0], [9, 1]],
+    },
+    overrides: {
+      cot: {
+        text: 'A real bed, a real blanket — Kiros’s people again. Seven months you slept under your coat. You keep it folded at the foot anyway. Habit.',
+      },
+      bench: {
+        label: 'the shelves',
+        text: 'Parts, bottles, a microwave older than you are. Everything on these shelves is half of something. Story of the district.',
+      },
+      crates: {
+        label: 'the gear rack',
+        text: 'The duffel’s packed. It’s been packed for seven months. Some habits you don’t unlearn — you just keep them where you can grab them.',
+      },
+    },
+    // wedge hugging the painted right wall — the paint's wall base is
+    // steeper than true 2:1, so these cells sit inside the wall
+    blocked: [[5, 0], [6, 0], [7, 0], [8, 0], [5, 1], [7, 1], [8, 1]],
+  },
 };
 
 export class SafehouseScene {
@@ -94,7 +125,20 @@ export class SafehouseScene {
       img.src = this.backdropCal.src;
     }
 
-    this.player = { x: 5, y: 5 };  // grid position, fractional while walking
+    // the active room: the painted backdrop's layout reshapes the grid and
+    // furniture stations; otherwise the code-drawn ROOM as authored
+    const layout = (backdrop || BACKDROP).layout;
+    this.room = layout
+      ? {
+        w: layout.w, h: layout.h,
+        objects: ROOM.objects
+          .filter((o) => layout.cells[o.id])
+          .map((o) => ({ ...o, cells: layout.cells[o.id], ...(layout.overrides?.[o.id] ?? {}) })),
+      }
+      : ROOM;
+
+    const start = layout?.start ?? { x: 5, y: 5 };
+    this.player = { ...start };    // grid position, fractional while walking
     this.path = [];                // remaining cells to walk
     this.pendingObject = null;     // object to read once we arrive
     this.marker = null;            // {x, y, t} click ripple
@@ -102,9 +146,10 @@ export class SafehouseScene {
     this.walkT = 0;                // distance walked, drives the leg cycle
 
     this.blocked = new Set();
-    for (const obj of ROOM.objects) {
+    for (const obj of this.room.objects) {
       for (const [cx, cy] of obj.cells) this.blocked.add(`${cx},${cy}`);
     }
+    for (const [cx, cy] of layout?.blocked ?? []) this.blocked.add(`${cx},${cy}`);
 
     // ambient detail state — deterministic layouts, animated per frame
     const frac = (i, k) => ((i * k) % 97) / 97;
@@ -178,11 +223,11 @@ export class SafehouseScene {
     // Fit the room with margins; classic 2:1 iso tiles.
     const fitW = this.viewW * 0.86;
     const fitH = this.viewH * 0.8;
-    const tw = Math.min(fitW / ((ROOM.w + ROOM.h) / 2), (fitH * 2) / ((ROOM.w + ROOM.h) / 2));
+    const tw = Math.min(fitW / ((this.room.w + this.room.h) / 2), (fitH * 2) / ((this.room.w + this.room.h) / 2));
     this.tileW = tw;
     this.tileH = tw / 2;
     this.originX = this.viewW / 2;
-    this.originY = (this.viewH - ((ROOM.w + ROOM.h) / 2) * this.tileH) / 2 + this.tileH * 1.5;
+    this.originY = (this.viewH - ((this.room.w + this.room.h) / 2) * this.tileH) / 2 + this.tileH * 1.5;
   }
 
   // grid → screen (cell corner; +0.5 each for cell center)
@@ -203,10 +248,10 @@ export class SafehouseScene {
   onTap(e) {
     const rect = this.canvas.getBoundingClientRect();
     const cell = this.unIso(e.clientX - rect.left, e.clientY - rect.top);
-    if (cell.x < 0 || cell.y < 0 || cell.x >= ROOM.w || cell.y >= ROOM.h) return;
+    if (cell.x < 0 || cell.y < 0 || cell.x >= this.room.w || cell.y >= this.room.h) return;
 
     this.onCaption(null);
-    const obj = ROOM.objects.find((o) => o.cells.some(([cx, cy]) => cx === cell.x && cy === cell.y));
+    const obj = this.room.objects.find((o) => o.cells.some(([cx, cy]) => cx === cell.x && cy === cell.y));
     const target = obj ? this.nearestOpenNeighbor(obj, this.player) : cell;
     if (!target || this.blocked.has(`${target.x},${target.y}`)) return;
 
@@ -231,7 +276,7 @@ export class SafehouseScene {
     for (const [cx, cy] of obj.cells) {
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = cx + dx, ny = cy + dy;
-        if (nx < 0 || ny < 0 || nx >= ROOM.w || ny >= ROOM.h) continue;
+        if (nx < 0 || ny < 0 || nx >= this.room.w || ny >= this.room.h) continue;
         if (this.blocked.has(`${nx},${ny}`)) continue;
         const d = Math.abs(nx - from.x) + Math.abs(ny - from.y);
         if (d < bestD) { bestD = d; best = { x: nx, y: ny }; }
@@ -250,7 +295,7 @@ export class SafehouseScene {
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = cur.x + dx, ny = cur.y + dy;
         const k = key(nx, ny);
-        if (nx < 0 || ny < 0 || nx >= ROOM.w || ny >= ROOM.h) continue;
+        if (nx < 0 || ny < 0 || nx >= this.room.w || ny >= this.room.h) continue;
         if (this.blocked.has(k) || prev.has(k)) continue;
         prev.set(k, cur);
         if (nx === to.x && ny === to.y) {
@@ -334,19 +379,19 @@ export class SafehouseScene {
       ctx.save();
       ctx.strokeStyle = PALETTE.teal;
       ctx.globalAlpha = this.calibrate ? 0.5 : 0.045;
-      for (let x = 0; x <= ROOM.w; x++) {
-        const a = this.iso(x, 0), b = this.iso(x, ROOM.h);
+      for (let x = 0; x <= this.room.w; x++) {
+        const a = this.iso(x, 0), b = this.iso(x, this.room.h);
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       }
-      for (let y = 0; y <= ROOM.h; y++) {
-        const a = this.iso(0, y), b = this.iso(ROOM.w, y);
+      for (let y = 0; y <= this.room.h; y++) {
+        const a = this.iso(0, y), b = this.iso(this.room.w, y);
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       }
       if (this.calibrate) {
         // object footprints, for lining the paint up with the stations
         ctx.globalAlpha = 0.8;
         ctx.strokeStyle = PALETTE.rose;
-        for (const obj of ROOM.objects) {
+        for (const obj of this.room.objects) {
           for (const [cx, cy] of obj.cells) {
             this.tracePoly([
               this.iso(cx, cy), this.iso(cx + 1, cy),
@@ -358,18 +403,17 @@ export class SafehouseScene {
       }
       ctx.restore();
 
-      this.drawLightPools(t);
+      // the paint carries its own light; code adds only the living layers
       this.drawMarker();
       this.drawPlayer(t);
-      this.drawMotes(t);
       this.drawGrain(t);
       return;
     }
 
     // poured-slab floor: alternating 3x3 concrete panels under the grid
     ctx.save();
-    for (let px = 0; px < ROOM.w / 3; px++) {
-      for (let py = 0; py < ROOM.h / 3; py++) {
+    for (let px = 0; px < this.room.w / 3; px++) {
+      for (let py = 0; py < this.room.h / 3; py++) {
         ctx.fillStyle = PALETTE.teal;
         ctx.globalAlpha = 0.015 + ((px + py) % 2) * 0.022;
         this.tracePoly([
@@ -385,7 +429,7 @@ export class SafehouseScene {
     if (this.grain) {
       ctx.save();
       this.tracePoly([
-        this.iso(0, 0), this.iso(ROOM.w, 0), this.iso(ROOM.w, ROOM.h), this.iso(0, ROOM.h),
+        this.iso(0, 0), this.iso(this.room.w, 0), this.iso(this.room.w, this.room.h), this.iso(0, this.room.h),
       ]);
       ctx.clip();
       ctx.globalAlpha = 0.6;
@@ -403,14 +447,14 @@ export class SafehouseScene {
     ctx.lineWidth = 1;
     ctx.shadowColor = PALETTE.teal;
     ctx.shadowBlur = 6;
-    for (let x = 0; x <= ROOM.w; x++) {
+    for (let x = 0; x <= this.room.w; x++) {
       ctx.globalAlpha = x % 3 === 0 ? 0.4 : 0.2;
-      const a = this.iso(x, 0), b = this.iso(x, ROOM.h);
+      const a = this.iso(x, 0), b = this.iso(x, this.room.h);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
-    for (let y = 0; y <= ROOM.h; y++) {
+    for (let y = 0; y <= this.room.h; y++) {
       ctx.globalAlpha = y % 3 === 0 ? 0.4 : 0.2;
-      const a = this.iso(0, y), b = this.iso(ROOM.w, y);
+      const a = this.iso(0, y), b = this.iso(this.room.w, y);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     ctx.restore();
@@ -424,7 +468,7 @@ export class SafehouseScene {
 
     // soft shadows under the furniture, then depth-sorted drawables
     this.drawObjectShadows();
-    const drawables = ROOM.objects.map((o) => ({
+    const drawables = this.room.objects.map((o) => ({
       depth: Math.max(...o.cells.map(([cx, cy]) => cx + cy)),
       fn: () => this.drawObject(o, t),
     }));
@@ -456,7 +500,7 @@ export class SafehouseScene {
     ctx.save();
 
     // solid wall surfaces: dark gradient panels so the room encloses
-    for (const [pt, span] of [[this.wallN.bind(this), ROOM.w], [this.wallW.bind(this), ROOM.h]]) {
+    for (const [pt, span] of [[this.wallN.bind(this), this.room.w], [this.wallW.bind(this), this.room.h]]) {
       const base0 = pt(0, 0), base1 = pt(span, 0);
       const grad = ctx.createLinearGradient(base0.x, base0.y - wallH, base0.x, base0.y);
       grad.addColorStop(0, hexA(PALETTE.blue, 0.015));
@@ -483,12 +527,12 @@ export class SafehouseScene {
     ctx.shadowColor = PALETTE.blue;
     ctx.shadowBlur = 8;
     // verticals + top rails
-    const topN0 = this.iso(0, 0), topNe = this.iso(ROOM.w, 0), topSw = this.iso(0, ROOM.h);
-    for (let x = 0; x <= ROOM.w; x++) {
+    const topN0 = this.iso(0, 0), topNe = this.iso(this.room.w, 0), topSw = this.iso(0, this.room.h);
+    for (let x = 0; x <= this.room.w; x++) {
       const p = this.iso(x, 0);
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - wallH); ctx.stroke();
     }
-    for (let y = 0; y <= ROOM.h; y++) {
+    for (let y = 0; y <= this.room.h; y++) {
       const p = this.iso(0, y);
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - wallH); ctx.stroke();
     }

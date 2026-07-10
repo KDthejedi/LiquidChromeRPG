@@ -33,9 +33,28 @@
   if (location.search.includes('walk')) {
     setTimeout(() => {
       const s = window.__scene;
-      s.path = s.findPath({ x: 5, y: 5 }, { x: 9, y: 6 }) || [];
+      s.path = s.findPath({ ...s.player }, { x: 9, y: 6 }) || [];
     }, 500);
   }
+  // ?tap=x,y — dispatch a tap on a grid cell (e.g. an object) after load
+  const tap = q.get('tap');
+  if (tap) {
+    setTimeout(() => {
+      const s = window.__scene;
+      const [tx, ty] = tap.split(',').map(Number);
+      const rect = s.canvas.getBoundingClientRect();
+      const p = s.iso(tx + 0.5, ty + 0.5);
+      s.canvas.dispatchEvent(new PointerEvent('pointerdown', {
+        clientX: rect.left + p.x, clientY: rect.top + p.y, bubbles: true,
+      }));
+    }, 500);
+  }
+  // surface captions in the DOM so headless --dump-dom can assert on them
+  const cap = document.createElement('div');
+  cap.id = 'cap';
+  cap.style.display = 'none';
+  document.body.appendChild(cap);
+  window.__scene.onCaption = (t) => { cap.textContent = t || ''; };
 </script>
 </body>
 </html>
