@@ -70,6 +70,34 @@ export class SafehouseScene {
       for (const [cx, cy] of obj.cells) this.blocked.add(`${cx},${cy}`);
     }
 
+    // ambient detail state — deterministic layouts, animated per frame
+    const frac = (i, k) => ((i * k) % 97) / 97;
+    this.rain = Array.from({ length: 26 }, (_, i) => ({
+      wx: 4.2 + frac(i + 1, 37) * 3.55,
+      speed: 0.5 + frac(i + 1, 53) * 0.55,
+      phase: frac(i + 1, 71),
+      len: 0.07 + frac(i + 1, 29) * 0.08,
+    }));
+    this.cityscape = [
+      { wx: 4.25, w: 0.7, h: 0.34 }, { wx: 5.1, w: 0.5, h: 0.52 },
+      { wx: 5.75, w: 0.85, h: 0.28 }, { wx: 6.75, w: 0.55, h: 0.46 },
+      { wx: 7.4, w: 0.5, h: 0.24 },
+    ];
+    this.cityLights = Array.from({ length: 14 }, (_, i) => {
+      const b = this.cityscape[i % this.cityscape.length];
+      return {
+        wx: b.wx + 0.12 + frac(i + 1, 41) * (b.w - 0.24),
+        f: 0.24 + frac(i + 1, 59) * (b.h - 0.1),
+        rate: 0.2 + frac(i + 1, 31) * 0.5,
+        seed: frac(i + 1, 83) * Math.PI * 2,
+      };
+    });
+    this.motes = Array.from({ length: 7 }, (_, i) => ({
+      seed: frac(i + 1, 61) * Math.PI * 2,
+      rx: 0.25 + frac(i + 1, 43) * 0.45,
+      rate: 0.12 + frac(i + 1, 23) * 0.2,
+    }));
+
     this._resize = this.resize.bind(this);
     window.addEventListener('resize', this._resize);
     canvas.addEventListener('pointerdown', (e) => this.onTap(e));
@@ -242,8 +270,10 @@ export class SafehouseScene {
     }
     ctx.restore();
 
-    // back walls (north edge y=0, west edge x=0)
+    // back walls (north edge y=0, west edge x=0) and what hangs on them
     this.drawWalls();
+    this.drawWallDetails(t);
+    this.drawFloorDetails();
 
     // click ripple
     if (this.marker) {
@@ -270,13 +300,23 @@ export class SafehouseScene {
     drawables.sort((a, b) => a.depth - b.depth);
     for (const d of drawables) d.fn();
 
+    // dust in the lamplight sits over everything in the room
+    this.drawMotes(t);
+
     // vignette + scanlines
     this.drawGrain();
   }
 
+  wallH() { return this.tileH * 2.6; }
+
+  // point on the north wall (grid x = wx, y = 0) or west wall (x = 0, y = wy)
+  // lifted to a fraction f of wall height
+  wallN(wx, f) { const p = this.iso(wx, 0); return { x: p.x, y: p.y - this.wallH() * f }; }
+  wallW(wy, f) { const p = this.iso(0, wy); return { x: p.x, y: p.y - this.wallH() * f }; }
+
   drawWalls() {
     const ctx = this.ctx;
-    const wallH = this.tileH * 2.6;
+    const wallH = this.wallH();
     ctx.save();
     ctx.strokeStyle = PALETTE.blue;
     ctx.globalAlpha = 0.35;
@@ -311,6 +351,213 @@ export class SafehouseScene {
     ctx.lineTo(w1.x, w1.y - wallH * 0.2);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
+  }
+
+  // quad helper on a wall: axis 'N'|'W', span [a0,a1] along the wall, band [f0,f1] of height
+  wallQuad(axis, a0, a1, f0, f1) {
+    const pt = axis === 'N' ? this.wallN.bind(this) : this.wallW.bind(this);
+    return [pt(a0, f1), pt(a1, f1), pt(a1, f0), pt(a0, f0)];
+  }
+
+  tracePoly(pts, close = true) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    if (close) ctx.closePath();
+  }
+
+  drawWallDetails(t) {
+    const ctx = this.ctx;
+    const s = t / 1000;
+
+    // --- the window (N wall, 4..8): city outside, rain on the glass ---
+    ctx.save();
+    this.tracePoly(this.wallQuad('N', 4.05, 7.95, 0.22, 0.88));
+    ctx.clip();
+
+    // skyline silhouettes, a district that never sleeps
+    ctx.fillStyle = PALETTE.violet;
+    ctx.globalAlpha = 0.13;
+    for (const b of this.cityscape) {
+      this.tracePoly(this.wallQuad('N', b.wx, b.wx + b.w, 0.22, 0.22 + b.h));
+      ctx.fill();
+    }
+    // lit windows blinking shift change
+    for (const l of this.cityLights) {
+      const on = Math.sin(s * l.rate * Math.PI * 2 + l.seed);
+      if (on < 0.2) continue;
+      const p = this.wallN(l.wx, l.f);
+      ctx.globalAlpha = 0.35 * Math.min(1, on * 2);
+      ctx.fillStyle = Math.sin(l.seed) > 0.3 ? PALETTE.teal : PALETTE.blue;
+      ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+    }
+    // rain, stitched down the glass
+    ctx.strokeStyle = PALETTE.teal;
+    ctx.lineWidth = 1;
+    for (const d of this.rain) {
+      const fall = (s * d.speed + d.phase) % 1;
+      const top = 0.88 - fall * 0.66;
+      const a = this.wallN(d.wx, top);
+      const b = this.wallN(d.wx + 0.06, Math.max(0.22, top - d.len));
+      ctx.globalAlpha = 0.16 + 0.1 * Math.sin(d.phase * 7);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // window frame
+    ctx.save();
+    ctx.strokeStyle = PALETTE.blue;
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 1;
+    this.tracePoly(this.wallQuad('N', 4.05, 7.95, 0.22, 0.88));
+    ctx.stroke();
+
+    // --- wall screen (N wall, 8.8..10.6), fed by the deck below ---
+    const flickOut = Math.sin(s * 11.7) > 0.985;
+    this.tracePoly(this.wallQuad('N', 8.8, 10.6, 0.34, 0.74));
+    ctx.globalAlpha = 0.45;
+    ctx.stroke();
+    if (!flickOut) {
+      ctx.fillStyle = PALETTE.teal;
+      ctx.globalAlpha = 0.05 + 0.02 * Math.sin(s * 1.4);
+      this.tracePoly(this.wallQuad('N', 8.8, 10.6, 0.34, 0.74));
+      ctx.fill();
+      // rows of data crawling somewhere it shouldn't
+      ctx.strokeStyle = PALETTE.teal;
+      for (let row = 0; row < 4; row++) {
+        const f = 0.66 - row * 0.08;
+        const shift = (s * (0.25 + row * 0.09)) % 1;
+        ctx.globalAlpha = 0.3;
+        for (let k = 0; k < 5; k++) {
+          const x0 = 8.95 + ((k * 0.37 + shift) % 1) * 1.35;
+          const a = this.wallN(x0, f);
+          const b = this.wallN(Math.min(x0 + 0.14 + (k % 3) * 0.06, 10.45), f);
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+    }
+
+    // --- vent grate (N wall, 1.3..2.4) ---
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.4;
+    this.tracePoly(this.wallQuad('N', 1.3, 2.4, 0.52, 0.7));
+    ctx.stroke();
+    for (let i = 1; i <= 3; i++) {
+      const f = 0.52 + (0.18 / 4) * i;
+      const a = this.wallN(1.38, f), b = this.wallN(2.32, f);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+
+    // --- shelves (W wall, 2..4.2): parts, bottles, nothing whole ---
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.5;
+    for (const f of [0.38, 0.58]) {
+      const a = this.wallW(2, f), b = this.wallW(4.2, f);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      // brackets
+      for (const wy of [2.1, 4.1]) {
+        const p = this.wallW(wy, f), q = this.wallW(wy, f - 0.07);
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+      }
+    }
+    // clutter on the shelves
+    ctx.globalAlpha = 0.45;
+    const clutter = [
+      [2.25, 0.38, 0.14, 0.1], [2.6, 0.38, 0.1, 0.16], [3.3, 0.38, 0.22, 0.08],
+      [2.4, 0.58, 0.12, 0.12], [3.1, 0.58, 0.09, 0.18], [3.7, 0.58, 0.16, 0.07],
+    ];
+    for (const [wy, f, w, h] of clutter) {
+      this.tracePoly(this.wallQuad('W', wy, wy + w, f, f + h));
+      ctx.stroke();
+    }
+
+    // --- neon sign fragment (W wall, 5.8..7.1) — salvage, still arguing ---
+    const buzz = Math.sin(s * 40) * 0.08;
+    const dropout = Math.sin(s * 1.9 + 1.3) > 0.94;
+    ctx.strokeStyle = PALETTE.rose;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = PALETTE.rose;
+    ctx.shadowBlur = dropout ? 2 : 10;
+    ctx.globalAlpha = dropout ? 0.12 : 0.55 + buzz;
+    const sg = [
+      [[5.9, 0.5], [5.9, 0.78]],
+      [[6.1, 0.5], [6.45, 0.78], [6.45, 0.5]],
+      [[6.7, 0.62], [7.05, 0.62]],
+    ];
+    for (const stroke of sg) {
+      this.tracePoly(stroke.map(([wy, f]) => this.wallW(wy, f)), false);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // --- conduit along both wall bases, junction boxes where it elbows ---
+    ctx.save();
+    ctx.strokeStyle = PALETTE.blue;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1;
+    this.tracePoly([this.wallW(8.8, 0.06), this.wallW(0.15, 0.06), this.wallN(0.15, 0.06), this.wallN(11.85, 0.06)], false);
+    ctx.stroke();
+    ctx.globalAlpha = 0.45;
+    for (const p of [this.wallN(3.6, 0.06), this.wallN(8.5, 0.06), this.wallW(5.2, 0.06)]) {
+      ctx.strokeRect(p.x - 2.5, p.y - 5, 5, 6);
+    }
+    // riser from the conduit up to the wall screen
+    ctx.globalAlpha = 0.3;
+    this.tracePoly([this.wallN(9.7, 0.06), this.wallN(9.7, 0.34)], false);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawFloorDetails() {
+    const ctx = this.ctx;
+    ctx.save();
+
+    // warm pool under the lamp — the one amber allowance
+    const lampC = this.iso(6.5, 4.5);
+    const pool = ctx.createRadialGradient(lampC.x, lampC.y, 2, lampC.x, lampC.y, this.tileW * 1.6);
+    pool.addColorStop(0, 'rgba(251, 191, 36, 0.10)');
+    pool.addColorStop(1, 'rgba(251, 191, 36, 0)');
+    ctx.fillStyle = pool;
+    ctx.beginPath();
+    ctx.ellipse(lampC.x, lampC.y, this.tileW * 1.6, this.tileH * 1.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // cable from the deck down the floor and up to the wall screen riser
+    ctx.strokeStyle = PALETTE.blue;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1;
+    this.tracePoly([
+      this.iso(9.4, 1.15), this.iso(9.65, 0.6), this.iso(9.7, 0.1), this.wallN(9.7, 0.06),
+    ], false);
+    ctx.stroke();
+
+    // scuffed floor where the pacing happens
+    ctx.strokeStyle = PALETTE.dim;
+    ctx.globalAlpha = 0.12;
+    for (const [x, y, r] of [[5.4, 5.3, 0.55], [3.1, 3.2, 0.4], [10.6, 4.6, 0.45]]) {
+      const c = this.iso(x, y);
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, this.tileW * 0.01 + this.tileW * r * 0.4, this.tileH * r * 0.4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawMotes(t) {
+    const ctx = this.ctx;
+    const s = t / 1000;
+    const lampTop = this.iso(6.5, 4.5);
+    const h = this.tileH * 2.2 * 0.9;
+    ctx.save();
+    ctx.fillStyle = PALETTE.amber;
+    for (const m of this.motes) {
+      const a = s * m.rate * Math.PI * 2 + m.seed;
+      const x = lampTop.x + Math.cos(a) * this.tileW * m.rx * 0.5;
+      const y = lampTop.y - h * (0.45 + 0.35 * Math.sin(a * 0.7 + m.seed));
+      ctx.globalAlpha = 0.18 + 0.14 * Math.sin(a * 1.3);
+      ctx.fillRect(x, y, 1.5, 1.5);
+    }
     ctx.restore();
   }
 
