@@ -63,6 +63,7 @@ export function slotInfo() {
 
 // most recently written non-empty slot, for boot
 export function latestSlot() {
+  migrateLegacy();
   let best = null;
   for (const slot of SLOTS) {
     const data = unwrap(localStorage.getItem(key(slot)));
