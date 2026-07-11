@@ -59,6 +59,7 @@ function startGame() {
     initial: char.name[0],
     portrait: op.portrait,
     body: op.body,
+    bodyBack: op.bodyBack,
     figure: op.id,
     onCaption: setCaption,
     onSfx: (name) => audio.sfx(name),

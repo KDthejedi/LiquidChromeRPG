@@ -25,6 +25,7 @@
     initial: op.name[0],
     portrait: '../' + op.portrait,
     body: q.get('body') || (op.body ? '../' + op.body : undefined),
+    bodyBack: q.get('bodyback') || (op.bodyBack ? '../' + op.bodyBack : undefined),
     figure: op.id,
     onCaption: () => {},
     backdrop: bg ? {
@@ -35,10 +36,11 @@
     } : undefined,
   });
   // ?walk — start a walk shortly after load, for screenshotting the gait
-  if (location.search.includes('walk')) {
+  if (q.has('walk') || q.has('walkto')) {
     setTimeout(() => {
       const s = window.__scene;
-      s.path = s.findPath({ ...s.player }, { x: 9, y: 6 }) || [];
+      const [wx, wy] = (q.get('walkto') || '9,6').split(',').map(Number);
+      s.path = s.findPath({ ...s.player }, { x: wx, y: wy }) || [];
     }, 500);
   }
   // ?tap=x,y — dispatch a tap on a grid cell (e.g. an object) after load

@@ -111,7 +111,7 @@ const FIGURES = {
 
 export class SafehouseScene {
   constructor(canvas, {
-    accent, initial, portrait, body, onCaption, onInteract, onSfx, figure, backdrop,
+    accent, initial, portrait, body, bodyBack, onCaption, onInteract, onSfx, figure, backdrop,
   }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -137,6 +137,13 @@ export class SafehouseScene {
       img.onload = () => { this.body = img; };
       img.src = body;
     }
+    this.bodyBack = null;
+    if (bodyBack) {
+      const img = new Image();
+      img.onload = () => { this.bodyBack = img; };
+      img.src = bodyBack;
+    }
+    this.away = false; // walking up-screen: show the back view if we have one
 
     // painted backdrop, if the asset exists — 404 falls back to code-drawn
     this.backdropCal = backdrop || BACKDROP;
@@ -356,7 +363,9 @@ export class SafehouseScene {
       const dist = Math.hypot(dx, dy);
       const step = speed * dt;
       const screenDx = dx - dy; // iso: +x goes right, +y goes left
+      const screenDy = dx + dy; // iso: positive walks toward the camera
       if (Math.abs(screenDx) > 0.01) this.facing = Math.sign(screenDx);
+      if (Math.abs(screenDy) > 0.01) this.away = screenDy < 0;
       this.walkT += step;
       // a puff of dust at each footfall
       const legSign = Math.sign(Math.sin(this.walkT * 9)) || 1;
@@ -1340,8 +1349,9 @@ export class SafehouseScene {
     // body art mode: the image is the figure — mirrored by facing, bobbing
     // with the stride, tilted into the walk, glowing into the wet floor
     if (this.body) {
+      const img = this.away && this.bodyBack ? this.bodyBack : this.body;
       const bh = H * 1.12;
-      const bw = bh * (this.body.width / this.body.height);
+      const bw = bh * (img.width / img.height);
       ctx.save();
       ctx.globalAlpha = 1;
       ctx.translate(c.x + lean * 0.5, c.y + 2 + bob * 0.4);
@@ -1349,7 +1359,7 @@ export class SafehouseScene {
       ctx.scale(this.facing, 1);
       ctx.shadowColor = this.accent;
       ctx.shadowBlur = 14;
-      ctx.drawImage(this.body, -bw / 2, -bh, bw, bh);
+      ctx.drawImage(img, -bw / 2, -bh, bw, bh);
       ctx.restore();
       ctx.restore();
       return;
