@@ -111,7 +111,7 @@ const FIGURES = {
 
 export class SafehouseScene {
   constructor(canvas, {
-    accent, initial, portrait, onCaption, onInteract, onSfx, figure, backdrop,
+    accent, initial, portrait, body, onCaption, onInteract, onSfx, figure, backdrop,
   }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -127,6 +127,15 @@ export class SafehouseScene {
       const img = new Image();
       img.onload = () => { this.portrait = img; };
       img.src = portrait;
+    }
+
+    // full-body art (transparent PNG): replaces the code-drawn figure while
+    // keeping shadow, reflection, dust, bob, lean, and facing mirror
+    this.body = null;
+    if (body) {
+      const img = new Image();
+      img.onload = () => { this.body = img; };
+      img.src = body;
     }
 
     // painted backdrop, if the asset exists — 404 falls back to code-drawn
@@ -1327,6 +1336,24 @@ export class SafehouseScene {
     ctx.beginPath();
     ctx.ellipse(c.x, c.y, r * 1.1, r * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    // body art mode: the image is the figure — mirrored by facing, bobbing
+    // with the stride, tilted into the walk, glowing into the wet floor
+    if (this.body) {
+      const bh = H * 1.12;
+      const bw = bh * (this.body.width / this.body.height);
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.translate(c.x + lean * 0.5, c.y + 2 + bob * 0.4);
+      if (walking) ctx.rotate(0.035 * this.facing);
+      ctx.scale(this.facing, 1);
+      ctx.shadowColor = this.accent;
+      ctx.shadowBlur = 14;
+      ctx.drawImage(this.body, -bw / 2, -bh, bw, bh);
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
 
     // lower legs below the coat hem — scissor while walking, settle when still
     ctx.strokeStyle = this.accent;

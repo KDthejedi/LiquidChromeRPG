@@ -24,6 +24,7 @@
     accent: op.accent,
     initial: op.name[0],
     portrait: '../' + op.portrait,
+    body: q.get('body') || (op.body ? '../' + op.body : undefined),
     figure: op.id,
     onCaption: () => {},
     backdrop: bg ? {
