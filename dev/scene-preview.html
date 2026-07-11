@@ -26,6 +26,8 @@
     portrait: '../' + op.portrait,
     body: q.get('body') || (op.body ? '../' + op.body : undefined),
     bodyBack: q.get('bodyback') || (op.bodyBack ? '../' + op.bodyBack : undefined),
+    rig: op.rig ? '../' + op.rig : undefined,
+    rigBack: op.rigBack ? '../' + op.rigBack : undefined,
     figure: op.id,
     onCaption: () => {},
     backdrop: bg ? {

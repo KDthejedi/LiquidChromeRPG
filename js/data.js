@@ -37,6 +37,8 @@ export const OPERATIVES = {
     portrait: 'assets/portraits/socrates.png',
     body: 'assets/bodies/socrates.png',
     bodyBack: 'assets/bodies/socrates-back.png',
+    rig: 'assets/bodies/socrates-rig.json',
+    rigBack: 'assets/bodies/socrates-back-rig.json',
     kirosRead: 'You stole from BiTechs to cut for people who couldn’t pay, and they called it mercy when they only took your chrome.',
     name: 'SOCRATES',
     role: 'Struck-off surgeon',

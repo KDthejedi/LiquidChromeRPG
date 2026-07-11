@@ -1,0 +1,16 @@
+{
+  "core": "socrates-core.png",
+  "legL": "socrates-legL.png",
+  "legR": "socrates-legR.png",
+  "w": 177,
+  "h": 512,
+  "y0": 364,
+  "pivotL": [
+    52.9,
+    399
+  ],
+  "pivotR": [
+    130.8,
+    399
+  ]
+}

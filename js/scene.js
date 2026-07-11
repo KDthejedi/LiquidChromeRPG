@@ -111,7 +111,8 @@ const FIGURES = {
 
 export class SafehouseScene {
   constructor(canvas, {
-    accent, initial, portrait, body, bodyBack, onCaption, onInteract, onSfx, figure, backdrop,
+    accent, initial, portrait, body, bodyBack, rig, rigBack,
+    onCaption, onInteract, onSfx, figure, backdrop,
   }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -144,6 +145,13 @@ export class SafehouseScene {
       img.src = bodyBack;
     }
     this.away = false; // walking up-screen: show the back view if we have one
+
+    // cutout rigs (core + legs + pivots): when present, the legs scissor and
+    // the torso counter-sways while walking
+    this.rigFront = null;
+    this.rigBack = null;
+    if (rig) this.loadRig(rig, (r) => { this.rigFront = r; });
+    if (rigBack) this.loadRig(rigBack, (r) => { this.rigBack = r; });
 
     // painted backdrop, if the asset exists — 404 falls back to code-drawn
     this.backdropCal = backdrop || BACKDROP;
@@ -235,6 +243,23 @@ export class SafehouseScene {
 
     this.lastT = performance.now();
     this._raf = requestAnimationFrame((t) => this.frame(t));
+  }
+
+  loadRig(url, cb) {
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((meta) => {
+        if (!meta) return;
+        const base = url.slice(0, url.lastIndexOf('/') + 1);
+        const parts = {};
+        let left = 3;
+        for (const k of ['core', 'legL', 'legR']) {
+          const img = new Image();
+          img.onload = () => { parts[k] = img; left -= 1; if (left === 0) cb({ ...meta, ...parts }); };
+          img.src = base + meta[k];
+        }
+      })
+      .catch(() => {});
   }
 
   destroy() {
@@ -1349,7 +1374,9 @@ export class SafehouseScene {
     // body art mode: the image is the figure — mirrored by facing, bobbing
     // with the stride, tilted into the walk, glowing into the wet floor
     if (this.body) {
-      const img = this.away && this.bodyBack ? this.bodyBack : this.body;
+      const back = this.away && this.bodyBack;
+      const img = back ? this.bodyBack : this.body;
+      const rig = back ? this.rigBack : this.rigFront;
       const bh = H * 1.12;
       const bw = bh * (img.width / img.height);
       ctx.save();
@@ -1357,9 +1384,36 @@ export class SafehouseScene {
       ctx.translate(c.x + lean * 0.5, c.y + 2 + bob * 0.4);
       if (walking) ctx.rotate(0.035 * this.facing);
       ctx.scale(this.facing, 1);
-      ctx.shadowColor = this.accent;
-      ctx.shadowBlur = 14;
-      ctx.drawImage(img, -bw / 2, -bh, bw, bh);
+      if (rig) {
+        const sx = bw / rig.w;
+        const sy = bh / rig.h;
+        const swing = walking ? legPhase * 0.26 : 0;
+        const legY = -bh + rig.y0 * sy;
+        const legH = (rig.h - rig.y0) * sy;
+        ctx.shadowBlur = 0;
+        for (const [key, pivot, ang] of [['legL', rig.pivotL, swing], ['legR', rig.pivotR, -swing]]) {
+          const px = -bw / 2 + pivot[0] * sx;
+          const py = -bh + pivot[1] * sy;
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.rotate(ang);
+          ctx.drawImage(rig[key], -bw / 2 - px, legY - py, bw, legH);
+          ctx.restore();
+        }
+        // torso counter-sway about the hips — the painted arms read through it
+        const hipY = -bh + rig.pivotL[1] * sy;
+        ctx.save();
+        ctx.translate(0, hipY);
+        ctx.rotate(-swing * 0.3);
+        ctx.shadowColor = this.accent;
+        ctx.shadowBlur = 14;
+        ctx.drawImage(rig.core, -bw / 2, -bh - hipY, bw, bh);
+        ctx.restore();
+      } else {
+        ctx.shadowColor = this.accent;
+        ctx.shadowBlur = 14;
+        ctx.drawImage(img, -bw / 2, -bh, bw, bh);
+      }
       ctx.restore();
       ctx.restore();
       return;
