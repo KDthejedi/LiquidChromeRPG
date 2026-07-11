@@ -26,8 +26,10 @@
     portrait: '../' + op.portrait,
     body: q.get('body') || (op.body ? '../' + op.body : undefined),
     bodyBack: q.get('bodyback') || (op.bodyBack ? '../' + op.bodyBack : undefined),
+    bodySide: op.bodySide ? '../' + op.bodySide : undefined,
     rig: op.rig ? '../' + op.rig : undefined,
     rigBack: op.rigBack ? '../' + op.rigBack : undefined,
+    rigSide: op.rigSide ? '../' + op.rigSide : undefined,
     figure: op.id,
     onCaption: () => {},
     backdrop: bg ? {
@@ -42,7 +44,7 @@
     setTimeout(() => {
       const s = window.__scene;
       const [wx, wy] = (q.get('walkto') || '9,6').split(',').map(Number);
-      s.path = s.findPath({ ...s.player }, { x: wx, y: wy }) || [];
+      s.startWalk(s.findPath({ ...s.player }, { x: wx, y: wy }) || []);
     }, 500);
   }
   // ?tap=x,y — dispatch a tap on a grid cell (e.g. an object) after load

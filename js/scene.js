@@ -111,7 +111,7 @@ const FIGURES = {
 
 export class SafehouseScene {
   constructor(canvas, {
-    accent, initial, portrait, body, bodyBack, rig, rigBack,
+    accent, initial, portrait, body, bodyBack, bodySide, rig, rigBack, rigSide,
     onCaption, onInteract, onSfx, figure, backdrop,
   }) {
     this.canvas = canvas;
@@ -144,14 +144,24 @@ export class SafehouseScene {
       img.onload = () => { this.bodyBack = img; };
       img.src = bodyBack;
     }
-    this.away = false; // walking up-screen: show the back view if we have one
+    this.bodySide = null;
+    if (bodySide) {
+      const img = new Image();
+      img.onload = () => { this.bodySide = img; };
+      img.src = bodySide;
+    }
+    this.view = 'front';   // front | back | side — chosen per walk from net direction
+    this.strideV = 0;      // eased stride speed 0..1 (accelerate in, settle out)
+    this.pathT = 0;        // seconds since the current walk began
 
     // cutout rigs (core + legs + pivots): when present, the legs scissor and
     // the torso counter-sways while walking
     this.rigFront = null;
     this.rigBack = null;
+    this.rigSide = null;
     if (rig) this.loadRig(rig, (r) => { this.rigFront = r; });
     if (rigBack) this.loadRig(rigBack, (r) => { this.rigBack = r; });
+    if (rigSide) this.loadRig(rigSide, (r) => { this.rigSide = r; });
 
     // painted backdrop, if the asset exists — 404 falls back to code-drawn
     this.backdropCal = backdrop || BACKDROP;
@@ -317,13 +327,28 @@ export class SafehouseScene {
     );
     if (!path) return;
     this.onSfx('move');
-    this.path = path;
+    this.startWalk(path);
     this.pendingObject = obj || null;
     this.marker = { x: target.x, y: target.y, t: 0 };
     if (path.length === 0 && obj) {
       // already standing next to it
       this.resolveInteract(obj);
       this.pendingObject = null;
+    }
+  }
+
+  startWalk(path) {
+    this.path = path;
+    this.pathT = 0;
+    if (this.body && path.length) {
+      const end = path[path.length - 1];
+      const ndx = end.x - Math.round(this.player.x);
+      const ndy = end.y - Math.round(this.player.y);
+      const sdx = ndx - ndy;
+      const sdy = ndx + ndy;
+      if (this.bodySide && Math.abs(sdx) >= 1.8 * Math.abs(sdy)) this.view = 'side';
+      else this.view = sdy < 0 ? 'back' : 'front';
+      if (sdx) this.facing = Math.sign(sdx);
     }
   }
 
@@ -379,23 +404,26 @@ export class SafehouseScene {
     const dt = Math.min((t - this.lastT) / 1000, 0.1);
     this.lastT = t;
 
-    // walk the path
+    // walk the path — ease in on the first step, settle on the last
     if (this.path.length) {
+      this.pathT += dt;
       const next = this.path[0];
-      const speed = 4.2; // tiles/sec
       const dx = next.x - this.player.x;
       const dy = next.y - this.player.y;
       const dist = Math.hypot(dx, dy);
-      const step = speed * dt;
+      const remaining = (this.path.length - 1) + dist;
+      const accel = Math.min(1, this.pathT * 3.5);
+      const settle = remaining < 0.8 ? Math.max(0.4, remaining / 0.8) : 1;
+      this.strideV = accel * settle;
+      const step = 4.2 * this.strideV * dt;
       const screenDx = dx - dy; // iso: +x goes right, +y goes left
-      const screenDy = dx + dy; // iso: positive walks toward the camera
-      if (Math.abs(screenDx) > 0.01) this.facing = Math.sign(screenDx);
-      if (Math.abs(screenDy) > 0.01) this.away = screenDy < 0;
+      if (!this.body && Math.abs(screenDx) > 0.01) this.facing = Math.sign(screenDx);
       this.walkT += step;
       // a puff of dust at each footfall
       const legSign = Math.sign(Math.sin(this.walkT * 9)) || 1;
       if (legSign !== this.lastLegSign) {
         this.lastLegSign = legSign;
+        this.onSfx('step');
         const c = this.iso(this.player.x + 0.5, this.player.y + 0.5);
         this.puffs.push({ x: c.x, y: c.y, t: 0 });
         if (this.puffs.length > 6) this.puffs.shift();
@@ -404,9 +432,12 @@ export class SafehouseScene {
         this.player.x = next.x;
         this.player.y = next.y;
         this.path.shift();
-        if (!this.path.length && this.pendingObject) {
-          this.resolveInteract(this.pendingObject);
-          this.pendingObject = null;
+        if (!this.path.length) {
+          this.strideV = 0;
+          if (this.pendingObject) {
+            this.resolveInteract(this.pendingObject);
+            this.pendingObject = null;
+          }
         }
       } else {
         this.player.x += (dx / dist) * step;
@@ -1374,20 +1405,26 @@ export class SafehouseScene {
     // body art mode: the image is the figure — mirrored by facing, bobbing
     // with the stride, tilted into the walk, glowing into the wet floor
     if (this.body) {
-      const back = this.away && this.bodyBack;
-      const img = back ? this.bodyBack : this.body;
-      const rig = back ? this.rigBack : this.rigFront;
+      const view = this.view;
+      const img = (view === 'back' && this.bodyBack) ? this.bodyBack
+        : (view === 'side' && this.bodySide) ? this.bodySide : this.body;
+      const rig = view === 'back' ? this.rigBack
+        : view === 'side' ? this.rigSide : this.rigFront;
+      // the side art faces screen-left; mirror it when heading right
+      const flip = (view === 'side' ? -this.facing : this.facing) || 1;
+      const v = walking ? this.strideV : 0;
+      const glow = walking ? 15 : 11 + 3 * Math.sin(t / 900);
       const bh = H * 1.12;
       const bw = bh * (img.width / img.height);
       ctx.save();
       ctx.globalAlpha = 1;
-      ctx.translate(c.x + lean * 0.5, c.y + 2 + bob * 0.4);
-      if (walking) ctx.rotate(0.035 * this.facing);
-      ctx.scale(this.facing, 1);
+      ctx.translate(c.x + lean * 0.5 * v, c.y + 2 + bob * 0.4);
+      if (walking) ctx.rotate(0.035 * this.facing * v);
+      ctx.scale(flip, 1);
       if (rig) {
         const sx = bw / rig.w;
         const sy = bh / rig.h;
-        const swing = walking ? legPhase * 0.26 : 0;
+        const swing = walking ? legPhase * 0.26 * (0.45 + 0.55 * v) : 0;
         const legY = -bh + rig.y0 * sy;
         const legH = (rig.h - rig.y0) * sy;
         ctx.shadowBlur = 0;
@@ -1400,18 +1437,21 @@ export class SafehouseScene {
           ctx.drawImage(rig[key], -bw / 2 - px, legY - py, bw, legH);
           ctx.restore();
         }
-        // torso counter-sway about the hips — the painted arms read through it
+        // torso counter-sway + coat follow-through a beat behind the stride;
+        // at rest, a slow breath through the chest
+        const coatLag = walking ? Math.sin(this.walkT * 9 - 0.9) * 0.04 * v : 0;
+        const breath = walking ? 0 : Math.sin(t / 1300) * 0.008;
         const hipY = -bh + rig.pivotL[1] * sy;
         ctx.save();
         ctx.translate(0, hipY);
-        ctx.rotate(-swing * 0.3);
+        ctx.rotate(-swing * 0.3 + coatLag);
         ctx.shadowColor = this.accent;
-        ctx.shadowBlur = 14;
-        ctx.drawImage(rig.core, -bw / 2, -bh - hipY, bw, bh);
+        ctx.shadowBlur = glow;
+        ctx.drawImage(rig.core, -bw / 2, -bh - hipY - bh * breath, bw, bh * (1 + breath));
         ctx.restore();
       } else {
         ctx.shadowColor = this.accent;
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = glow;
         ctx.drawImage(img, -bw / 2, -bh, bw, bh);
       }
       ctx.restore();
