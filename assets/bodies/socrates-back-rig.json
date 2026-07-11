@@ -12,5 +12,19 @@
   "pivotR": [
     166.0,
     430
-  ]
+  ],
+  "armL": {
+    "img": "socrates-back-armL.png",
+    "pivot": [
+      19.1,
+      215
+    ]
+  },
+  "armR": {
+    "img": "socrates-back-armR.png",
+    "pivot": [
+      209.3,
+      215
+    ]
+  }
 }

@@ -262,11 +262,18 @@ export class SafehouseScene {
         if (!meta) return;
         const base = url.slice(0, url.lastIndexOf('/') + 1);
         const parts = {};
-        let left = 3;
+        const arms = ['armL', 'armR'].filter((k) => meta[k]);
+        let left = 3 + arms.length;
+        const done = () => { left -= 1; if (left === 0) cb({ ...meta, ...parts }); };
         for (const k of ['core', 'legL', 'legR']) {
           const img = new Image();
-          img.onload = () => { parts[k] = img; left -= 1; if (left === 0) cb({ ...meta, ...parts }); };
+          img.onload = () => { parts[k] = img; done(); };
           img.src = base + meta[k];
+        }
+        for (const k of arms) {
+          const img = new Image();
+          img.onload = () => { parts[k + 'Img'] = img; done(); };
+          img.src = base + meta[k].img;
         }
       })
       .catch(() => {});
@@ -1395,11 +1402,12 @@ export class SafehouseScene {
     this.streak(c.x, c.y + 2, r * 1.6, this.tileH * 2.2, this.accent, 0.07);
     ctx.globalCompositeOperation = 'source-over';
 
-    // ground shadow
+    // ground shadow, stretching slightly with the stride
+    const shadowStretch = walking ? 1 + Math.abs(legPhase) * 0.14 * this.strideV : 1;
     ctx.fillStyle = this.accent;
     ctx.globalAlpha = 0.18;
     ctx.beginPath();
-    ctx.ellipse(c.x, c.y, r * 1.1, r * 0.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(c.x, c.y, r * 1.1 * shadowStretch, r * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // body art mode: the image is the figure — mirrored by facing, bobbing
@@ -1431,8 +1439,9 @@ export class SafehouseScene {
         for (const [key, pivot, ang] of [['legL', rig.pivotL, swing], ['legR', rig.pivotR, -swing]]) {
           const px = -bw / 2 + pivot[0] * sx;
           const py = -bh + pivot[1] * sy;
+          const lift = walking ? Math.max(0, -ang) * bh * 0.12 : 0;
           ctx.save();
-          ctx.translate(px, py);
+          ctx.translate(px, py - lift);
           ctx.rotate(ang);
           ctx.drawImage(rig[key], -bw / 2 - px, legY - py, bw, legH);
           ctx.restore();
@@ -1449,6 +1458,23 @@ export class SafehouseScene {
         ctx.shadowBlur = glow;
         ctx.drawImage(rig.core, -bw / 2, -bh - hipY - bh * breath, bw, bh * (1 + breath));
         ctx.restore();
+        // forearms swing opposite the legs, pivoted at the elbows
+        if (rig.armLImg || rig.armRImg) {
+          const armSwing = walking ? -legPhase * 0.2 * (0.45 + 0.55 * v) : 0;
+          ctx.shadowBlur = 0;
+          for (const [part, img, ang] of [
+            [rig.armL, rig.armLImg, armSwing], [rig.armR, rig.armRImg, -armSwing],
+          ]) {
+            if (!img) continue;
+            const px = -bw / 2 + part.pivot[0] * sx;
+            const py = -bh + part.pivot[1] * sy;
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.rotate(ang);
+            ctx.drawImage(img, -bw / 2 - px, -bh - py, bw, bh);
+            ctx.restore();
+          }
+        }
       } else {
         ctx.shadowColor = this.accent;
         ctx.shadowBlur = glow;
