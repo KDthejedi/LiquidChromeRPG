@@ -2,15 +2,15 @@
   "core": "socrates-side-core.png",
   "legL": "socrates-side-legL.png",
   "legR": "socrates-side-legR.png",
-  "w": 173,
+  "w": 114,
   "h": 512,
-  "y0": 364,
+  "y0": 354,
   "pivotL": [
-    50.6,
-    399
+    26.1,
+    389
   ],
   "pivotR": [
-    128.7,
-    399
+    70.1,
+    389
   ]
 }
