@@ -1,16 +1,32 @@
 {
   "core": "socrates-side-core.png",
-  "legL": "socrates-side-legL.png",
-  "legR": "socrates-side-legR.png",
   "w": 114,
   "h": 512,
   "y0": 354,
-  "pivotL": [
-    26.1,
-    389
-  ],
-  "pivotR": [
-    70.1,
-    389
-  ]
+  "legs": {
+    "L": {
+      "up": "socrates-side-legLu.png",
+      "down": "socrates-side-legLd.png",
+      "hip": [
+        26.1,
+        389
+      ],
+      "knee": [
+        24.0,
+        420
+      ]
+    },
+    "R": {
+      "up": "socrates-side-legRu.png",
+      "down": "socrates-side-legRd.png",
+      "hip": [
+        70.1,
+        389
+      ],
+      "knee": [
+        70.4,
+        420
+      ]
+    }
+  }
 }

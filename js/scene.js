@@ -262,18 +262,16 @@ export class SafehouseScene {
         if (!meta) return;
         const base = url.slice(0, url.lastIndexOf('/') + 1);
         const parts = {};
-        const arms = ['armL', 'armR'].filter((k) => meta[k]);
-        let left = 3 + arms.length;
-        const done = () => { left -= 1; if (left === 0) cb({ ...meta, ...parts }); };
-        for (const k of ['core', 'legL', 'legR']) {
-          const img = new Image();
-          img.onload = () => { parts[k] = img; done(); };
-          img.src = base + meta[k];
+        const files = [['core', meta.core]];
+        for (const side of ['L', 'R']) {
+          files.push([`leg${side}u`, meta.legs[side].up], [`leg${side}d`, meta.legs[side].down]);
         }
-        for (const k of arms) {
+        for (const k of ['armL', 'armR']) if (meta[k]) files.push([`${k}Img`, meta[k].img]);
+        let left = files.length;
+        for (const [key, file] of files) {
           const img = new Image();
-          img.onload = () => { parts[k + 'Img'] = img; done(); };
-          img.src = base + meta[k].img;
+          img.onload = () => { parts[key] = img; left -= 1; if (left === 0) cb({ ...meta, ...parts }); };
+          img.src = base + file;
         }
       })
       .catch(() => {});
@@ -1424,36 +1422,57 @@ export class SafehouseScene {
       const glow = walking ? 15 : 11 + 3 * Math.sin(t / 900);
       const bh = H * 1.12;
       const bw = bh * (img.width / img.height);
+      const phase = this.walkT * 9;
+      // gait: body highest as the legs pass, lowest at full stride; weight
+      // shifts laterally over the planted foot; a small dip starts the walk
+      const bounce = walking ? -bh * 0.018 * Math.cos(phase) * Math.cos(phase) * v : 0;
+      const sway = walking ? bw * 0.028 * Math.sin(phase) * v : 0;
+      const dip = walking && this.pathT < 0.18 ? bh * 0.02 * (1 - this.pathT / 0.18) : 0;
       ctx.save();
       ctx.globalAlpha = 1;
-      ctx.translate(c.x + lean * 0.5 * v, c.y + 2 + bob * 0.4);
+      ctx.translate(c.x + lean * 0.5 * v + sway, c.y + 2 + bounce + dip);
       if (walking) ctx.rotate(0.035 * this.facing * v);
       ctx.scale(flip, 1);
       if (rig) {
         const sx = bw / rig.w;
         const sy = bh / rig.h;
-        const swing = walking ? legPhase * 0.26 * (0.45 + 0.55 * v) : 0;
+        const amp = 0.28 * (0.45 + 0.55 * v);
         const legY = -bh + rig.y0 * sy;
         const legH = (rig.h - rig.y0) * sy;
         ctx.shadowBlur = 0;
-        for (const [key, pivot, ang] of [['legL', rig.pivotL, swing], ['legR', rig.pivotR, -swing]]) {
-          const px = -bw / 2 + pivot[0] * sx;
-          const py = -bh + pivot[1] * sy;
-          const lift = walking ? Math.max(0, -ang) * bh * 0.12 : 0;
+        for (const [side, off] of [['L', 0], ['R', Math.PI]]) {
+          const leg = rig.legs[side];
+          const ph = phase + off;
+          // hip swing; knee flexes through swing (forward travel), extends
+          // to plant; the swinging leg lifts off the ground plane
+          const hip = walking ? Math.sin(ph) * amp : 0;
+          const flex = walking ? Math.pow(Math.max(0, Math.sin(ph + 2.1)), 1.5) * 0.5 * (0.45 + 0.55 * v) : 0;
+          const lift = walking ? Math.max(0, -Math.sin(ph)) * bh * 0.045 : 0;
+          const hx = -bw / 2 + leg.hip[0] * sx;
+          const hy = -bh + leg.hip[1] * sy;
           ctx.save();
-          ctx.translate(px, py - lift);
-          ctx.rotate(ang);
-          ctx.drawImage(rig[key], -bw / 2 - px, legY - py, bw, legH);
+          ctx.translate(hx, hy - lift);
+          ctx.rotate(hip);
+          // shin first (knee-pivoted), thigh over it to hide the seam
+          const kx = (leg.knee[0] - leg.hip[0]) * sx;
+          const ky = (leg.knee[1] - leg.hip[1]) * sy;
+          ctx.save();
+          ctx.translate(kx, ky);
+          ctx.rotate(flex);
+          ctx.drawImage(rig[`leg${side}d`], -bw / 2 - hx - kx, legY - hy - ky, bw, legH);
+          ctx.restore();
+          ctx.drawImage(rig[`leg${side}u`], -bw / 2 - hx, legY - hy, bw, legH);
           ctx.restore();
         }
         // torso counter-sway + coat follow-through a beat behind the stride;
-        // at rest, a slow breath through the chest
-        const coatLag = walking ? Math.sin(this.walkT * 9 - 0.9) * 0.04 * v : 0;
+        // at rest, a slow breath and a lazy weight shift
+        const counter = walking ? -Math.sin(phase) * amp * 0.3 : Math.sin(t / 5200) * 0.006;
+        const coatLag = walking ? Math.sin(phase - 0.9) * 0.04 * v : 0;
         const breath = walking ? 0 : Math.sin(t / 1300) * 0.008;
-        const hipY = -bh + rig.pivotL[1] * sy;
+        const hipY = -bh + rig.legs.L.hip[1] * sy;
         ctx.save();
         ctx.translate(0, hipY);
-        ctx.rotate(-swing * 0.3 + coatLag);
+        ctx.rotate(counter + coatLag);
         ctx.shadowColor = this.accent;
         ctx.shadowBlur = glow;
         ctx.drawImage(rig.core, -bw / 2, -bh - hipY - bh * breath, bw, bh * (1 + breath));
