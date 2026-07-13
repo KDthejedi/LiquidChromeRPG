@@ -1,0 +1,9 @@
+{
+  "img": "jackal-run.png",
+  "cellW": 224,
+  "cellH": 256,
+  "dirs": 8,
+  "frames": 16,
+  "anchorX": 112.0,
+  "anchorY": 252.54054054054055
+}

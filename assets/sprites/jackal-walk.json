@@ -1,0 +1,9 @@
+{
+  "img": "jackal-walk.png",
+  "cellW": 189,
+  "cellH": 256,
+  "dirs": 8,
+  "frames": 16,
+  "anchorX": 94.5,
+  "anchorY": 252.4567474048443
+}

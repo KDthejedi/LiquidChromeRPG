@@ -64,6 +64,7 @@ function startGame() {
     rig: op.rig,
     rigBack: op.rigBack,
     rigSide: op.rigSide,
+    sheet: op.sheet,
     figure: op.id,
     onCaption: setCaption,
     onSfx: (name) => audio.sfx(name),

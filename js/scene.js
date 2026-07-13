@@ -112,7 +112,7 @@ const FIGURES = {
 export class SafehouseScene {
   constructor(canvas, {
     accent, initial, portrait, body, bodyBack, bodySide, rig, rigBack, rigSide,
-    onCaption, onInteract, onSfx, figure, backdrop,
+    sheet, onCaption, onInteract, onSfx, figure, backdrop,
   }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -158,6 +158,22 @@ export class SafehouseScene {
     // the torso counter-sways while walking
     this.rigFront = null;
     this.rigBack = null;
+    // pre-rendered sprite sheet (8 directions x N frames): the top tier —
+    // full 3D-baked animation. Loaded from a {json,png} pair.
+    this.sheet = null;
+    this.sheetDir = 4; // current facing, row index into the sheet
+    if (sheet) {
+      fetch(sheet)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((meta) => {
+          if (!meta) return;
+          const img = new Image();
+          img.onload = () => { this.sheet = { ...meta, img }; };
+          img.src = sheet.slice(0, sheet.lastIndexOf('/') + 1) + meta.img;
+        })
+        .catch(() => {});
+    }
+
     this.rigSide = null;
     if (rig) this.loadRig(rig, (r) => { this.rigFront = r; });
     if (rigBack) this.loadRig(rigBack, (r) => { this.rigBack = r; });
@@ -343,6 +359,23 @@ export class SafehouseScene {
   }
 
   startWalk(path) {
+    // smooth the cell path: drop straight-through points, chamfer corners so
+    // the walk curves instead of snapping 90 degrees
+    if (path.length > 1) {
+      const pts = [{ x: this.player.x, y: this.player.y }, ...path];
+      const route = [];
+      for (let i = 1; i < pts.length - 1; i++) {
+        const p = pts[i];
+        const a = pts[i - 1];
+        const b = pts[i + 1];
+        const straight = (b.x - p.x) === (p.x - a.x) && (b.y - p.y) === (p.y - a.y);
+        if (straight) continue;
+        route.push({ x: p.x + (a.x - p.x) * 0.3, y: p.y + (a.y - p.y) * 0.3 });
+        route.push({ x: p.x + (b.x - p.x) * 0.3, y: p.y + (b.y - p.y) * 0.3 });
+      }
+      route.push(pts[pts.length - 1]);
+      path = route;
+    }
     this.path = path;
     this.pathT = 0;
     if (this.body && path.length) {
@@ -423,6 +456,25 @@ export class SafehouseScene {
       const step = 4.2 * this.strideV * dt;
       const screenDx = dx - dy; // iso: +x goes right, +y goes left
       if (!this.body && Math.abs(screenDx) > 0.01) this.facing = Math.sign(screenDx);
+      if (this.sheet) {
+        // sheet row d faces screen (-sin th, cos th/2): the turntable spins
+        // clockwise on screen (verified against renders)
+        const vx = dx - dy;
+        const vy = (dx + dy) * 0.5;
+        let bestD = this.sheetDir;
+        let bestDot = -1e9;
+        for (let d = 0; d < 8; d++) {
+          const th = (d * Math.PI) / 4;
+          const sxv = -Math.sin(th);
+          const syv = Math.cos(th) * 0.5;
+          const dot = (vx * sxv + vy * syv) / Math.hypot(sxv, syv);
+          if (dot > bestDot) { bestDot = dot; bestD = d; }
+        }
+        if (bestD !== this.sheetDir && t - (this._dirT || 0) > 140) {
+          this.sheetDir = bestD;
+          this._dirT = t;
+        }
+      }
       this.walkT += step;
       // a puff of dust at each footfall
       const legSign = Math.sign(Math.sin(this.walkT * 9)) || 1;
@@ -1408,6 +1460,33 @@ export class SafehouseScene {
     ctx.ellipse(c.x, c.y, r * 1.1 * shadowStretch, r * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // sprite-sheet mode: pre-rendered 3D frames, 8 directions
+    if (this.sheet) {
+      const sh = this.sheet;
+      const targetH = H * 1.18;
+      const scale = targetH / sh.cellH;
+      const drawW = sh.cellW * scale;
+      // stride-synced frame: one full cycle per ~0.85 tiles of travel
+      const frame = walking
+        ? Math.floor((this.walkT / 1.1) * sh.frames) % sh.frames
+        : 0;
+      const sxp = frame * sh.cellW;
+      const syp = this.sheetDir * sh.cellH;
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.shadowColor = this.accent;
+      ctx.shadowBlur = walking ? 14 : 10 + 3 * Math.sin(t / 900);
+      ctx.drawImage(
+        sh.img, sxp, syp, sh.cellW, sh.cellH,
+        c.x - sh.anchorX * scale,
+        c.y + 3 - sh.anchorY * scale,
+        drawW, targetH,
+      );
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
+
     // body art mode: the image is the figure — mirrored by facing, bobbing
     // with the stride, tilted into the walk, glowing into the wet floor
     if (this.body) {
@@ -1422,10 +1501,15 @@ export class SafehouseScene {
       const glow = walking ? 15 : 11 + 3 * Math.sin(t / 900);
       const bh = H * 1.12;
       const bw = bh * (img.width / img.height);
-      const phase = this.walkT * 9;
+      const rawPhase = this.walkT * 9;
+      // skewed gait clock: stance lingers, swing snaps through — the single
+      // biggest de-roboticizer; plus a per-step micro-variation
+      const stepN = Math.floor(rawPhase / Math.PI);
+      const vary = 0.94 + 0.12 * Math.abs(Math.sin(stepN * 12.9898) * 43758.5453 % 1);
+      const phase = rawPhase + 0.35 * Math.sin(rawPhase);
       // gait: body highest as the legs pass, lowest at full stride; weight
       // shifts laterally over the planted foot; a small dip starts the walk
-      const bounce = walking ? -bh * 0.018 * Math.cos(phase) * Math.cos(phase) * v : 0;
+      const bounce = walking ? -bh * 0.013 * Math.cos(phase) * Math.cos(phase) * v * vary : 0;
       const sway = walking ? bw * 0.028 * Math.sin(phase) * v : 0;
       const dip = walking && this.pathT < 0.18 ? bh * 0.02 * (1 - this.pathT / 0.18) : 0;
       ctx.save();
@@ -1445,8 +1529,8 @@ export class SafehouseScene {
           const ph = phase + off;
           // hip swing; knee flexes through swing (forward travel), extends
           // to plant; the swinging leg lifts off the ground plane
-          const hip = walking ? Math.sin(ph) * amp : 0;
-          const flex = walking ? Math.pow(Math.max(0, Math.sin(ph + 2.1)), 1.5) * 0.5 * (0.45 + 0.55 * v) : 0;
+          const hip = walking ? Math.sin(ph) * amp * vary : 0;
+          const flex = walking ? Math.pow(Math.max(0, Math.sin(ph + 2.1)), 1.5) * 0.5 * (0.45 + 0.55 * v) * vary : 0;
           const lift = walking ? Math.max(0, -Math.sin(ph)) * bh * 0.045 : 0;
           const hx = -bw / 2 + leg.hip[0] * sx;
           const hy = -bh + leg.hip[1] * sy;
@@ -1479,7 +1563,10 @@ export class SafehouseScene {
         ctx.restore();
         // forearms swing opposite the legs, pivoted at the elbows
         if (rig.armLImg || rig.armRImg) {
-          const armSwing = walking ? -legPhase * 0.2 * (0.45 + 0.55 * v) : 0;
+          // double-harmonic arm swing: forward reach quicker than the return
+          const armSwing = walking
+            ? -(Math.sin(phase) + 0.25 * Math.sin(2 * phase + 0.6)) * 0.18 * (0.45 + 0.55 * v) * vary
+            : 0;
           ctx.shadowBlur = 0;
           for (const [part, img, ang] of [
             [rig.armL, rig.armLImg, armSwing], [rig.armR, rig.armRImg, -armSwing],
