@@ -73,10 +73,10 @@ const BACKDROP = {
     w: 10, h: 10,
     start: { x: 4, y: 6 },
     cells: {
-      deck: [[0, 3], [0, 4], [0, 5], [1, 3], [1, 4], [1, 5]],
+      deck: [[0, 3], [0, 4], [0, 5], [1, 3], [1, 4], [1, 5], [0, 6], [1, 6], [0, 7]],
       bench: [[1, 1], [2, 1], [1, 2], [2, 2]],
       crates: [[5, 2], [6, 2]],
-      cot: [[7, 2], [8, 2], [9, 2], [7, 3], [8, 3], [9, 3]],
+      cot: [[7, 2], [8, 2], [9, 2], [7, 3], [8, 3], [9, 3], [7, 4], [8, 4], [9, 4]],
       lamp: [[6, 1]],
       door: [[9, 0], [9, 1]],
     },
@@ -262,9 +262,18 @@ export class SafehouseScene {
     nctx.putImageData(nd, 0, 0);
     this.grain = this.ctx.createPattern(noise, 'repeat');
 
+    this.hoverObj = null;
     this._resize = this.resize.bind(this);
     window.addEventListener('resize', this._resize);
     canvas.addEventListener('pointerdown', (e) => this.onTap(e));
+    canvas.addEventListener('pointermove', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const cell = this.unIso(e.clientX - rect.left, e.clientY - rect.top);
+      this.hoverObj = this.room.objects.find(
+        (o) => o.cells.some(([cx, cy]) => cx === cell.x && cy === cell.y),
+      ) || null;
+      this.canvas.style.cursor = this.hoverObj ? 'pointer' : 'crosshair';
+    });
     this.resize();
 
     this.lastT = performance.now();
@@ -370,6 +379,9 @@ export class SafehouseScene {
         const b = pts[i + 1];
         const straight = (b.x - p.x) === (p.x - a.x) && (b.y - p.y) === (p.y - a.y);
         if (straight) continue;
+        // never cut a corner whose diagonal neighbor is furniture
+        const diag = `${Math.round(a.x + b.x - p.x)},${Math.round(a.y + b.y - p.y)}`;
+        if (this.blocked.has(diag)) { route.push({ x: p.x, y: p.y }); continue; }
         route.push({ x: p.x + (a.x - p.x) * 0.3, y: p.y + (a.y - p.y) * 0.3 });
         route.push({ x: p.x + (b.x - p.x) * 0.3, y: p.y + (b.y - p.y) * 0.3 });
       }
@@ -556,6 +568,7 @@ export class SafehouseScene {
       ctx.restore();
 
       // the paint carries its own light; code adds only the living layers
+      this.drawObjectMarkers(t);
       this.drawMarker();
       this.drawPlayer(t);
       this.drawGrain(t);
@@ -1463,7 +1476,7 @@ export class SafehouseScene {
     // sprite-sheet mode: pre-rendered 3D frames, 8 directions
     if (this.sheet) {
       const sh = this.sheet;
-      const targetH = H * 1.18;
+      const targetH = H * 1.55;
       const scale = targetH / sh.cellH;
       const drawW = sh.cellW * scale;
       // stride-synced frame: one full cycle per ~0.85 tiles of travel
@@ -1499,7 +1512,7 @@ export class SafehouseScene {
       const flip = (view === 'side' ? -this.facing : this.facing) || 1;
       const v = walking ? this.strideV : 0;
       const glow = walking ? 15 : 11 + 3 * Math.sin(t / 900);
-      const bh = H * 1.12;
+      const bh = H * 1.48;
       const bw = bh * (img.width / img.height);
       const rawPhase = this.walkT * 9;
       // skewed gait clock: stance lingers, swing snaps through — the single
@@ -1793,6 +1806,48 @@ export class SafehouseScene {
       ctx.strokeStyle = PALETTE.teal;
       ctx.beginPath(); ctx.arc(c.x + lean - 2, headY, r, 0, Math.PI * 2); ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  // floating pips over everything tappable — brighter with a label on hover
+  drawObjectMarkers(t) {
+    const ctx = this.ctx;
+    ctx.save();
+    this.room.objects.forEach((obj, i) => {
+      let cx = 0;
+      let cy = 0;
+      for (const [a, b] of obj.cells) { cx += a; cy += b; }
+      cx = cx / obj.cells.length + 0.5;
+      cy = cy / obj.cells.length + 0.5;
+      const p = this.iso(cx, cy);
+      const hover = this.hoverObj === obj;
+      const bobm = this.still ? 0 : Math.sin(t / 700 + i * 1.7) * 2.5;
+      const y = p.y - this.tileH * 2.1 + bobm;
+      const r = hover ? 6 : 4;
+      const pulse = this.still ? 0.5 : 0.42 + 0.18 * Math.sin(t / 600 + i);
+      ctx.globalAlpha = hover ? 0.95 : pulse;
+      ctx.strokeStyle = obj.color;
+      ctx.fillStyle = PALETTE.ink;
+      ctx.lineWidth = 1.4;
+      ctx.shadowColor = obj.color;
+      ctx.shadowBlur = hover ? 14 : 8;
+      ctx.beginPath();
+      ctx.moveTo(p.x, y - r); ctx.lineTo(p.x + r, y); ctx.lineTo(p.x, y + r); ctx.lineTo(p.x - r, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (hover) {
+        ctx.shadowBlur = 0;
+        ctx.font = '10px "SF Mono", Menlo, Consolas, monospace';
+        ctx.textAlign = 'center';
+        const label = obj.label.toUpperCase();
+        const w = ctx.measureText(label).width + 10;
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(p.x - w / 2, y + r + 4, w, 15);
+        ctx.fillStyle = obj.color;
+        ctx.fillText(label, p.x, y + r + 15);
+      }
+    });
     ctx.restore();
   }
 

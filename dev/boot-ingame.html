@@ -6,6 +6,7 @@ const op = new URLSearchParams(location.search).get('op') || 'zen';
 const seeds = {
   zen: { opId: 'zen', name: 'ZEN', role: 'Corporate ghost', attrs: { Body: 4, Reflex: 6, Mind: 9, Presence: 4, Signal: 7 } },
   socrates: { opId: 'socrates', name: 'SOCRATES', role: 'Struck-off surgeon', attrs: { Body: 6, Reflex: 4, Mind: 8, Presence: 6, Signal: 5 } },
+  jackal: { opId: 'jackal', name: 'JACKAL', role: 'Ex-corp military', attrs: { Body: 8, Reflex: 6, Mind: 5, Presence: 7, Signal: 3 } },
 };
 localStorage.setItem('liquidchrome_save_v1_s1', JSON.stringify({ v: 1, at: 1, state: { character: {
   ...seeds[op], skills: {}, credits: 300, health: 36, chrome: 48, static: 0,
