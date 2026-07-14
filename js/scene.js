@@ -66,6 +66,8 @@ const BACKDROP = {
   src: 'assets/interiors/safehouse.jpg',
   origin: { x: 1048, y: 352 },
   tileW: 146,
+  // the painted window, in image pixels — rain falls behind the glass
+  window: { x0: 330, y0: 148, x1: 842, y1: 512 },
   // the painted room has its own geometry and furniture stations; this
   // layout re-shapes the walkable grid, remaps object footprints to the
   // paint, and re-voices captions where the paint shows different furniture.
@@ -245,6 +247,13 @@ export class SafehouseScene {
     }));
     this.puffs = [];        // footstep dust
     this.lastLegSign = 1;
+    this.bdRain = Array.from({ length: 46 }, (_, i) => ({
+      fx: ((i * 37) % 97) / 97,
+      speed: 0.5 + (((i + 1) * 53) % 97) / 97 * 0.7,
+      phase: ((i * 71) % 97) / 97,
+      len: 0.08 + (((i + 1) * 29) % 97) / 97 * 0.1,
+      a: 0.07 + (((i + 1) * 41) % 97) / 97 * 0.1,
+    }));
     // accessibility floor: honor prefers-reduced-motion by stilling the
     // decorative loops (rain, drone, haze, motes, steam, grain jitter)
     this.still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -534,11 +543,36 @@ export class SafehouseScene {
     if (this.backdrop) {
       const cal = this.backdropCal;
       const s = this.tileW / cal.tileW;
-      ctx.drawImage(
-        this.backdrop,
-        this.originX - cal.origin.x * s, this.originY - cal.origin.y * s,
-        this.backdrop.width * s, this.backdrop.height * s,
-      );
+      const bdx = this.originX - cal.origin.x * s;
+      const bdy = this.originY - cal.origin.y * s;
+      ctx.drawImage(this.backdrop, bdx, bdy, this.backdrop.width * s, this.backdrop.height * s);
+
+      // rain outside the window — streaks behind the glass
+      if (cal.window) {
+        const wx0 = bdx + cal.window.x0 * s;
+        const wy0 = bdy + cal.window.y0 * s;
+        const ww = (cal.window.x1 - cal.window.x0) * s;
+        const wh = (cal.window.y1 - cal.window.y0) * s;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(wx0, wy0, ww, wh);
+        ctx.clip();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = PALETTE.teal;
+        ctx.lineWidth = 1;
+        const ts = t / 1000;
+        for (const d of this.bdRain) {
+          const fall = this.still ? d.phase : (ts * d.speed + d.phase) % 1;
+          const x = wx0 + d.fx * ww + fall * ww * 0.06;
+          const y = wy0 + fall * wh;
+          ctx.globalAlpha = d.a;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + d.len * wh * 0.07, y + d.len * wh);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       // whisper of the walkable grid so taps have somewhere to land
       ctx.save();
       ctx.strokeStyle = PALETTE.teal;

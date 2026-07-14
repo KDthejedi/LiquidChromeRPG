@@ -284,3 +284,70 @@ html, body {
 .menu-actions button.danger { color: var(--rose); border-color: rgba(244, 63, 94, 0.35); }
 .menu-actions button.danger:hover { border-color: var(--rose); box-shadow: 0 0 10px rgba(244, 63, 94, 0.3); }
 .menu-status { margin-top: 0.8rem; font-size: 0.75rem; color: var(--text-dim); min-height: 1.2em; }
+
+/* ---------- cinema (story beats) ---------- */
+#cinema {
+  position: fixed; inset: 0;
+  z-index: 60;
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+#cinema-art {
+  flex: 1 1 52%;
+  min-height: 0;
+  background-size: cover;
+  background-position: center 25%;
+  position: relative;
+}
+#cinema-art::after {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(4,7,13,0.35), transparent 30%, transparent 60%, var(--ink)),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.06) 0 1px, transparent 1px 4px);
+}
+#cinema-art.no-art { flex: 0 0 18%; background: var(--ink); }
+#cinema-art.no-art::after { background: none; }
+#cinema-body {
+  flex: 1 1 48%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.4rem 1.6rem 2rem;
+  overflow-y: auto;
+}
+#cinema-text {
+  max-width: 44rem;
+  width: 100%;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  color: var(--text);
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+}
+#cinema-actions {
+  max-width: 44rem;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 1.4rem;
+}
+.cinema-btn {
+  background: rgba(45, 212, 191, 0.04);
+  border: 1px solid var(--line);
+  color: var(--teal);
+  font: inherit;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  padding: 0.7rem 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+.cinema-btn:hover, .cinema-btn:focus-visible {
+  border-color: var(--teal);
+  box-shadow: 0 0 14px rgba(45, 212, 191, 0.25);
+  outline: none;
+}
